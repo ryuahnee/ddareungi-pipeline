@@ -1,0 +1,11 @@
+.env
+infra/airflow/logs/
+*.db
+*.jar
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.gradle/
+build/
+data/
