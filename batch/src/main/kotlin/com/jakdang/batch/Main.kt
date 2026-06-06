@@ -14,7 +14,6 @@ fun main(args: Array<String>){
     }
 
     val job     = params["job"]    ?: error("--job 필수")
-    val date    = params["date"]   ?: error("--date 필수")
     val runId   = params["run-id"] ?: error("--run-id 필수")
     val apiKey  = System.getenv("DDAREUNGI_API_KEY") ?: error("DDAREUNGI_API_KEY 환경변수 필수")
 
