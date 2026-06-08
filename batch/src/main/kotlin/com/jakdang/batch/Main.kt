@@ -6,6 +6,9 @@ import com.jakdang.batch.job.DdareungiRealtimeSyncJob
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
 import com.jakdang.batch.job.StagingLoadJob
+import com.jakdang.batch.job.MartSnapshotJob
+import com.jakdang.batch.job.MartDepletionAlertJob
+import com.jakdang.batch.job.MartCongestionAlertJob
 
 fun main(args: Array<String>){
 
@@ -29,6 +32,9 @@ fun main(args: Array<String>){
             "ddareungiRealtimeSync" -> DdareungiRealtimeSyncJob(client, db, runId, collectedAt).execute()
             "check"   -> db.check()
             "stagingLoad" -> StagingLoadJob(db, runId).execute()
+            "martSnapshot"       -> MartSnapshotJob(db, runId).execute()
+            "martDepletionAlert" -> MartDepletionAlertJob(db, runId).execute()
+            "martCongestionAlert"-> MartCongestionAlertJob(db, runId).execute()
             else -> error("알 수 없는 job: $job")
         }
     }

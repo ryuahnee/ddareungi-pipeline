@@ -39,6 +39,40 @@ class DuckDbClient(dbPath: String) {
                     run_id                VARCHAR
                 )
             """.trimIndent())
+            stmt.execute("CREATE SCHEMA IF NOT EXISTS mart")
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.station_snapshot (
+                    station_id            VARCHAR,
+                    station_name          VARCHAR,
+                    rack_tot_cnt          INTEGER,
+                    parking_bike_tot_cnt  INTEGER,
+                    shared                INTEGER,
+                    station_latitude      DOUBLE,
+                    station_longitude     DOUBLE,
+                    collected_at          TIMESTAMP,
+                    run_id                VARCHAR
+                )
+            """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.depletion_alert (
+                    station_id            VARCHAR,
+                    station_name          VARCHAR,
+                    parking_bike_tot_cnt  INTEGER,
+                    shared                INTEGER,
+                    collected_at          TIMESTAMP,
+                    run_id                VARCHAR
+                )
+            """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.congestion_alert (
+                    station_id            VARCHAR,
+                    station_name          VARCHAR,
+                    parking_bike_tot_cnt  INTEGER,
+                    shared                INTEGER,
+                    collected_at          TIMESTAMP,
+                    run_id                VARCHAR
+                )
+            """.trimIndent())
         }
         log.info("DuckDB 초기화 완료: $dbPath")
     }
@@ -94,6 +128,57 @@ class DuckDbClient(dbPath: String) {
             if (rs.next()) count = rs.getInt(1)
         }
         log.info("staging.bike_status 적재 완료 {}건 (run_id={})", count, runId)
+        return count
+    }
+
+    fun loadMartSnapshot(runId: String): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.station_snapshot")
+            stmt.execute("""
+                INSERT INTO mart.station_snapshot
+                SELECT station_id, station_name, rack_tot_cnt, parking_bike_tot_cnt,
+                       shared, station_latitude, station_longitude, collected_at, run_id
+                FROM staging.bike_status
+                WHERE run_id = '$runId'
+            """.trimIndent())
+        }
+        val count = conn.createStatement().executeQuery("SELECT COUNT(*) FROM mart.station_snapshot")
+            .also { it.next() }.getInt(1)
+        log.info("mart.station_snapshot 적재 완료 {}건 (run_id={})", count, runId)
+        return count
+    }
+
+    fun loadMartDepletionAlert(runId: String): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.depletion_alert WHERE run_id = '$runId'")
+            stmt.execute("""
+                INSERT INTO mart.depletion_alert
+                SELECT station_id, station_name, parking_bike_tot_cnt, shared, collected_at, run_id
+                FROM staging.bike_status
+                WHERE run_id = '$runId' AND shared < 10
+            """.trimIndent())
+        }
+        val count = conn.createStatement()
+            .executeQuery("SELECT COUNT(*) FROM mart.depletion_alert WHERE run_id = '$runId'")
+            .also { it.next() }.getInt(1)
+        log.info("mart.depletion_alert 적재 완료 {}건 (run_id={})", count, runId)
+        return count
+    }
+
+    fun loadMartCongestionAlert(runId: String): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.congestion_alert WHERE run_id = '$runId'")
+            stmt.execute("""
+                INSERT INTO mart.congestion_alert
+                SELECT station_id, station_name, parking_bike_tot_cnt, shared, collected_at, run_id
+                FROM staging.bike_status
+                WHERE run_id = '$runId' AND shared > 90
+            """.trimIndent())
+        }
+        val count = conn.createStatement()
+            .executeQuery("SELECT COUNT(*) FROM mart.congestion_alert WHERE run_id = '$runId'")
+            .also { it.next() }.getInt(1)
+        log.info("mart.congestion_alert 적재 완료 {}건 (run_id={})", count, runId)
         return count
     }
 
