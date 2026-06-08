@@ -25,6 +25,20 @@ class DuckDbClient(dbPath: String) {
                     run_id                VARCHAR
                 )
             """.trimIndent())
+            stmt.execute("CREATE SCHEMA IF NOT EXISTS staging")
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS staging.bike_status (
+                    station_id            VARCHAR,
+                    station_name          VARCHAR,
+                    rack_tot_cnt          INTEGER,
+                    parking_bike_tot_cnt  INTEGER,
+                    shared                INTEGER,
+                    station_latitude      DOUBLE,
+                    station_longitude     DOUBLE,
+                    collected_at          TIMESTAMP,
+                    run_id                VARCHAR
+                )
+            """.trimIndent())
         }
         log.info("DuckDB 초기화 완료: $dbPath")
     }
@@ -47,6 +61,40 @@ class DuckDbClient(dbPath: String) {
             pstmt.executeBatch()
         }
         log.info("raw.bike_status 저장 완료 {}건", rows.size)
+    }
+
+    fun loadStaging(runId: String): Int {
+        val sql = """
+            INSERT INTO staging.bike_status
+            SELECT station_id, station_name,
+                   TRY_CAST(rack_tot_cnt AS INTEGER),
+                   TRY_CAST(parking_bike_tot_cnt AS INTEGER),
+                   TRY_CAST(shared AS INTEGER),
+                   TRY_CAST(station_latitude AS DOUBLE),
+                   TRY_CAST(station_longitude AS DOUBLE),
+                   collected_at,
+                   run_id
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY run_id, station_id ORDER BY collected_at DESC) AS rn
+                FROM raw.bike_status
+                WHERE run_id = ?
+            ) t
+            WHERE rn = 1
+        """.trimIndent()
+
+        conn.prepareStatement(sql).use { pstmt ->
+            pstmt.setString(1, runId)
+            pstmt.executeUpdate()
+        }
+
+        var count = 0
+        conn.prepareStatement("SELECT COUNT(*) FROM staging.bike_status WHERE run_id = ?").use { pstmt ->
+            pstmt.setString(1, runId)
+            val rs = pstmt.executeQuery()
+            if (rs.next()) count = rs.getInt(1)
+        }
+        log.info("staging.bike_status 적재 완료 {}건 (run_id={})", count, runId)
+        return count
     }
 
     fun check() {

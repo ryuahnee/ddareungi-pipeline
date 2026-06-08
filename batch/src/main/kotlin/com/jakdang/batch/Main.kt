@@ -5,6 +5,7 @@ import com.jakdang.batch.db.DuckDbClient
 import com.jakdang.batch.job.DdareungiRealtimeSyncJob
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
+import com.jakdang.batch.job.StagingLoadJob
 
 fun main(args: Array<String>){
 
@@ -27,6 +28,7 @@ fun main(args: Array<String>){
         when (job) {
             "ddareungiRealtimeSync" -> DdareungiRealtimeSyncJob(client, db, runId, collectedAt).execute()
             "check"   -> db.check()
+            "stagingLoad" -> StagingLoadJob(db, runId).execute()
             else -> error("알 수 없는 job: $job")
         }
     }
