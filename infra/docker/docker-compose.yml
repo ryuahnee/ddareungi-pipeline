@@ -11,10 +11,14 @@ x-airflow-common: &airflow-common
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    DDAREUNGI_API_KEY: ${DDAREUNGI_API_KEY}
+    DUCKDB_PATH: /opt/data/ddareungi.db
   volumes:
     - ../airflow/dags:/opt/airflow/dags
     - ../airflow/logs:/opt/airflow/logs
     - ../airflow/plugins:/opt/airflow/plugins
+    - ../../batch/build/libs:/opt/jakdang
+    - ../../data:/opt/data
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     postgres:

@@ -32,7 +32,7 @@ dependencies {
 }
 
 tasks.shadowJar {
-    archiveBaseName.set("jakdang-batch")
+    archiveBaseName.set("ddareungi-batch")
     archiveClassifier.set("")
     archiveVersion.set("")
 }
