@@ -17,6 +17,7 @@ with DAG(
     schedule_interval="*/10 * * * *",
     start_date=datetime(2026, 6, 8),
     catchup=False,
+    max_active_runs=1,
     tags=["ddareungi"],
 ) as dag:
 
@@ -45,4 +46,4 @@ with DAG(
         bash_command=f"java -jar {JAR} --job=martCongestionAlert --run-id={{{{ run_id }}}}",
     )
 
-    collect >> staging >> [mart_snapshot, mart_depletion, mart_congestion]
+    collect >> staging >> mart_snapshot >> mart_depletion >> mart_congestion
