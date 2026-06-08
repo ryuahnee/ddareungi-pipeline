@@ -182,6 +182,25 @@ class DuckDbClient(dbPath: String) {
         return count
     }
 
+    fun readMartSnapshot(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.station_snapshot")
+
+    fun readMartDepletionAlert(runId: String): List<Map<String, Any?>> =
+        readTable("SELECT * FROM mart.depletion_alert WHERE run_id = '$runId'")
+
+    fun readMartCongestionAlert(runId: String): List<Map<String, Any?>> =
+        readTable("SELECT * FROM mart.congestion_alert WHERE run_id = '$runId'")
+
+    private fun readTable(sql: String): List<Map<String, Any?>> {
+        val rows = mutableListOf<Map<String, Any?>>()
+        conn.createStatement().executeQuery(sql).use { rs ->
+            val meta = rs.metaData
+            while (rs.next()) {
+                rows.add((1..meta.columnCount).associate { meta.getColumnName(it) to rs.getObject(it) })
+            }
+        }
+        return rows
+    }
+
     fun check() {
         conn.createStatement().use { stmt ->
             val rs = stmt.executeQuery("SELECT COUNT(*), MIN(collected_at), MAX(collected_at) FROM raw.bike_status")

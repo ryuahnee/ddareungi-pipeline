@@ -24,6 +24,9 @@ dependencies {
     // DuckDB
     implementation("org.duckdb:duckdb_jdbc:1.1.3")
 
+    // PostgreSQL
+    implementation("org.postgresql:postgresql:42.7.3")
+
     // 로깅
     implementation("ch.qos.logback:logback-classic:1.4.14")
 

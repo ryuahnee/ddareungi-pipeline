@@ -46,4 +46,9 @@ with DAG(
         bash_command=f"java -jar {JAR} --job=martCongestionAlert --run-id={{{{ run_id }}}}",
     )
 
-    collect >> staging >> mart_snapshot >> mart_depletion >> mart_congestion
+    mart_sync = BashOperator(
+        task_id="martSync",
+        bash_command=f"java -jar {JAR} --job=martSync --run-id={{{{ run_id }}}}",
+    )
+
+    collect >> staging >> mart_snapshot >> mart_depletion >> mart_congestion >> mart_sync

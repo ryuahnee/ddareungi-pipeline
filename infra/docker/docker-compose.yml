@@ -15,6 +15,9 @@ x-airflow-common: &airflow-common
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     DDAREUNGI_API_KEY: ${DDAREUNGI_API_KEY}
     DUCKDB_PATH: /opt/data/ddareungi.db
+    GRAFANA_DB_URL: jdbc:postgresql://grafana-db:5432/grafana
+    GRAFANA_DB_USER: grafana
+    GRAFANA_DB_PASSWORD: grafana
   volumes:
     - ../airflow/dags:/opt/airflow/dags
     - ../airflow/logs:/opt/airflow/logs
@@ -93,5 +96,38 @@ services:
     volumes:
       - .:/sources
 
+  grafana-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: grafana
+      POSTGRES_PASSWORD: grafana
+      POSTGRES_DB: grafana
+    ports:
+      - "5433:5432"
+    volumes:
+      - grafana-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "grafana"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    depends_on:
+      grafana-db:
+        condition: service_healthy
+    restart: always
+
 volumes:
   postgres-db-volume:
+  grafana-db-volume:
+  grafana-storage:
