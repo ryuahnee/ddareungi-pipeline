@@ -26,13 +26,8 @@ fun main(args: Array<String>){
     val client = DdareungiClient(apiKey)
     val collectedAt = LocalDateTime.now().toString()
 
-    val dbPath    = System.getenv("DUCKDB_PATH")       ?: error("DUCKDB_PATH 환경변수 필수")
-    val pgUrl     = System.getenv("GRAFANA_DB_URL")     ?: error("GRAFANA_DB_URL 환경변수 필수")
-    val pgUser    = System.getenv("GRAFANA_DB_USER")    ?: error("GRAFANA_DB_USER 환경변수 필수")
-    val pgPass    = System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
-
-    val db       = DuckDbClient(dbPath)
-    val postgres = PostgresClient(pgUrl, pgUser, pgPass)
+    val dbPath = System.getenv("DUCKDB_PATH") ?: error("DUCKDB_PATH 환경변수 필수")
+    val db     = DuckDbClient(dbPath)
 
     runBlocking {
         when (job) {
@@ -42,12 +37,19 @@ fun main(args: Array<String>){
             "martSnapshot"       -> MartSnapshotJob(db, runId).execute()
             "martDepletionAlert" -> MartDepletionAlertJob(db, runId).execute()
             "martCongestionAlert"-> MartCongestionAlertJob(db, runId).execute()
-            "martSync"           -> MartSyncJob(db, postgres, runId).execute()
+            "martSync" -> {
+                val postgres = PostgresClient(
+                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
+                )
+                MartSyncJob(db, postgres, runId).execute()
+                postgres.close()
+            }
             else -> error("알 수 없는 job: $job")
         }
     }
 
     db.close()
-    postgres.close()
     client.close()
 }
