@@ -78,6 +78,16 @@ class PostgresClient(url: String, user: String, password: String) {
                 )
             """.trimIndent())
             stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart_hot_sunny_station_stats (
+                    station_id        VARCHAR,
+                    station_name      VARCHAR,
+                    avg_shared        DOUBLE PRECISION,
+                    sample_count      BIGINT,
+                    station_latitude  DOUBLE PRECISION,
+                    station_longitude DOUBLE PRECISION
+                )
+            """.trimIndent())
+            stmt.execute("""
                 CREATE TABLE IF NOT EXISTS mart_hourly_weather_bike (
                     collected_at    TIMESTAMP,
                     precip_type     INTEGER,
@@ -204,6 +214,25 @@ class PostgresClient(url: String, user: String, password: String) {
             pstmt.executeBatch()
         }
         log.info("mart_bike_movement 동기화 완료 {}건", rows.size)
+    }
+
+    fun syncHotSunnyStationStats(rows: List<Map<String, Any?>>) {
+        conn.createStatement().execute("DELETE FROM mart_hot_sunny_station_stats")
+        if (rows.isEmpty()) return
+        val sql = "INSERT INTO mart_hot_sunny_station_stats VALUES (?,?,?,?,?,?)"
+        conn.prepareStatement(sql).use { pstmt ->
+            rows.forEach { row ->
+                pstmt.setString(1, row["station_id"] as String?)
+                pstmt.setString(2, row["station_name"] as String?)
+                pstmt.setObject(3, row["avg_shared"])
+                pstmt.setObject(4, row["sample_count"])
+                pstmt.setObject(5, row["station_latitude"])
+                pstmt.setObject(6, row["station_longitude"])
+                pstmt.addBatch()
+            }
+            pstmt.executeBatch()
+        }
+        log.info("mart_hot_sunny_station_stats 동기화 완료 {}건", rows.size)
     }
 
     fun syncHourlyWeatherBike(rows: List<Map<String, Any?>>) {

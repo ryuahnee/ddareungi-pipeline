@@ -20,6 +20,7 @@ class MartSyncJob(
         postgres.syncWeatherBikeStats(duckDb.readMartWeatherBikeStats())
         postgres.syncWeatherDepletion(duckDb.readMartWeatherDepletion())
         postgres.syncBikeMovement(duckDb.readMartBikeMovement())
+        postgres.syncHotSunnyStationStats(duckDb.readMartHotSunnyStationStats())
         postgres.syncHourlyWeatherBike(duckDb.readMartHourlyWeatherBike())
         postgres.syncDepletionWithWeather(duckDb.readMartDepletionWithWeather())
 

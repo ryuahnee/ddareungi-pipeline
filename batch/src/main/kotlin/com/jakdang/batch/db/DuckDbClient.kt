@@ -122,6 +122,16 @@ class DuckDbClient(dbPath: String) {
                 )
             """.trimIndent())
             stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.hot_sunny_station_stats (
+                    station_id        VARCHAR,
+                    station_name      VARCHAR,
+                    avg_shared        DOUBLE,
+                    sample_count      BIGINT,
+                    station_latitude  DOUBLE,
+                    station_longitude DOUBLE
+                )
+            """.trimIndent())
+            stmt.execute("""
                 CREATE TABLE IF NOT EXISTS mart.hourly_weather_bike (
                     collected_at    TIMESTAMP,
                     precip_type     INTEGER,
@@ -364,6 +374,38 @@ class DuckDbClient(dbPath: String) {
         log.info("mart.bike_movement 적재 완료 {}건 (run_id={})", count, runId)
         return count
     }
+
+    fun loadMartHotSunnyStationStats(): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.hot_sunny_station_stats")
+            stmt.execute("""
+                INSERT INTO mart.hot_sunny_station_stats
+                SELECT
+                    b.station_id,
+                    b.station_name,
+                    ROUND(AVG(b.shared), 1) AS avg_shared,
+                    COUNT(*) AS sample_count,
+                    MAX(s.station_latitude) AS station_latitude,
+                    MAX(s.station_longitude) AS station_longitude
+                FROM staging.bike_status b
+                JOIN raw.weather_snapshot w
+                    ON DATE_TRUNC('hour', b.collected_at) = DATE_TRUNC('hour', w.observed_at)
+                JOIN mart.station_snapshot s ON b.station_id = s.station_id
+                WHERE w.precip_type = 0 AND w.temperature >= 25
+                GROUP BY b.station_id, b.station_name
+                ORDER BY avg_shared DESC
+            """.trimIndent())
+        }
+        val count = conn.createStatement()
+            .executeQuery("SELECT COUNT(*) FROM mart.hot_sunny_station_stats")
+            .also { it.next() }.getInt(1)
+        log.info("mart.hot_sunny_station_stats 적재 완료 {}건", count)
+        return count
+    }
+
+    fun readMartHotSunnyStationStats(): List<Map<String, Any?>> = readTable(
+        "SELECT * FROM mart.hot_sunny_station_stats ORDER BY avg_shared DESC"
+    )
 
     fun loadMartHourlyWeatherBike(): Int {
         conn.createStatement().use { stmt ->
