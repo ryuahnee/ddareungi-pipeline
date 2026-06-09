@@ -1,6 +1,7 @@
 package com.jakdang.batch.db
 
 import com.jakdang.batch.model.BikeStationRow
+import com.jakdang.batch.model.WeatherSnapshot
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.DriverManager
@@ -23,6 +24,22 @@ class DuckDbClient(dbPath: String) {
                     station_longitude     VARCHAR,
                     collected_at          TIMESTAMP,
                     run_id                VARCHAR
+                )
+            """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS raw.weather_snapshot (
+                    base_date     VARCHAR,
+                    base_time     VARCHAR,
+                    nx            INTEGER,
+                    ny            INTEGER,
+                    temperature   DOUBLE,
+                    precipitation DOUBLE,
+                    precip_type   INTEGER,
+                    wind_speed    DOUBLE,
+                    humidity      INTEGER,
+                    observed_at   TIMESTAMP,
+                    collected_at  TIMESTAMP,
+                    run_id        VARCHAR
                 )
             """.trimIndent())
             stmt.execute("CREATE SCHEMA IF NOT EXISTS staging")
@@ -95,6 +112,27 @@ class DuckDbClient(dbPath: String) {
             pstmt.executeBatch()
         }
         log.info("raw.bike_status 저장 완료 {}건", rows.size)
+    }
+
+    fun insertWeather(snapshot: WeatherSnapshot, observedAt: String, collectedAt: String, runId: String) {
+        val sql = "INSERT INTO raw.weather_snapshot VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+        conn.prepareStatement(sql).use { pstmt ->
+            pstmt.setString(1, snapshot.baseDate)
+            pstmt.setString(2, snapshot.baseTime)
+            pstmt.setInt(3, snapshot.nx)
+            pstmt.setInt(4, snapshot.ny)
+            pstmt.setDouble(5, snapshot.temperature)
+            pstmt.setDouble(6, snapshot.precipitation)
+            pstmt.setInt(7, snapshot.precipType)
+            pstmt.setDouble(8, snapshot.windSpeed)
+            pstmt.setInt(9, snapshot.humidity)
+            pstmt.setString(10, observedAt)
+            pstmt.setString(11, collectedAt)
+            pstmt.setString(12, runId)
+            pstmt.executeUpdate()
+        }
+        log.info("raw.weather_snapshot 저장 완료 (기온={}°C, 강수형태={}, 습도={}%)",
+            snapshot.temperature, snapshot.precipType, snapshot.humidity)
     }
 
     fun loadStaging(runId: String): Int {
