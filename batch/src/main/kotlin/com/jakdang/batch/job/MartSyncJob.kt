@@ -17,6 +17,9 @@ class MartSyncJob(
         postgres.syncMartSnapshot(duckDb.readMartSnapshot())
         postgres.syncMartAlert("mart_depletion_alert", duckDb.readMartDepletionAlert(runId))
         postgres.syncMartAlert("mart_congestion_alert", duckDb.readMartCongestionAlert(runId))
+        postgres.syncWeatherBikeStats(duckDb.readMartWeatherBikeStats())
+        postgres.syncWeatherDepletion(duckDb.readMartWeatherDepletion())
+        postgres.syncBikeMovement(duckDb.readMartBikeMovement())
 
         log.info("mart PostgreSQL 동기화 완료 runId=$runId")
     }

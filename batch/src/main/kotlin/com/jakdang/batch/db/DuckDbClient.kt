@@ -337,6 +337,10 @@ class DuckDbClient(dbPath: String) {
         return count
     }
 
+    fun readMartWeatherBikeStats(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.weather_bike_stats")
+    fun readMartWeatherDepletion(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.weather_depletion")
+    fun readMartBikeMovement(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.bike_movement")
+
     fun readMartSnapshot(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.station_snapshot")
 
     fun readMartDepletionAlert(runId: String): List<Map<String, Any?>> =
