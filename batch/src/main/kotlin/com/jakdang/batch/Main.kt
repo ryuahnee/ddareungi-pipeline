@@ -6,6 +6,7 @@ import com.jakdang.batch.db.DuckDbClient
 import com.jakdang.batch.db.PostgresClient
 import com.jakdang.batch.job.DdareungiRealtimeSyncJob
 import com.jakdang.batch.job.MartBikeMovementJob
+import com.jakdang.batch.job.MartDepletionWithWeatherJob
 import com.jakdang.batch.job.MartCongestionAlertJob
 import com.jakdang.batch.job.MartDepletionAlertJob
 import com.jakdang.batch.job.MartSnapshotJob
@@ -52,6 +53,7 @@ fun main(args: Array<String>){
                 MartSyncJob(db, postgres, runId).execute()
                 postgres.close()
             }
+            "martDepletionWithWeather" -> MartDepletionWithWeatherJob(db, runId).execute()
             "martWeatherBikeStats"  -> MartWeatherBikeStatsJob(db, runId).execute()
             "martWeatherDepletion"  -> MartWeatherDepletionJob(db, runId).execute()
             "martBikeMovement"      -> MartBikeMovementJob(db, runId).execute()

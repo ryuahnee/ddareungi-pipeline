@@ -121,6 +121,23 @@ class DuckDbClient(dbPath: String) {
                     run_id        VARCHAR
                 )
             """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.depletion_with_weather (
+                    station_id            VARCHAR,
+                    station_name          VARCHAR,
+                    parking_bike_tot_cnt  INTEGER,
+                    shared                INTEGER,
+                    station_latitude      DOUBLE,
+                    station_longitude     DOUBLE,
+                    precip_type           INTEGER,
+                    precip_label          VARCHAR,
+                    temperature           DOUBLE,
+                    wind_speed            DOUBLE,
+                    humidity              INTEGER,
+                    collected_at          TIMESTAMP,
+                    run_id                VARCHAR
+                )
+            """.trimIndent())
         }
         log.info("DuckDB 초기화 완료: $dbPath")
     }
@@ -336,6 +353,39 @@ class DuckDbClient(dbPath: String) {
         log.info("mart.bike_movement 적재 완료 {}건 (run_id={})", count, runId)
         return count
     }
+
+    fun loadMartDepletionWithWeather(runId: String): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.depletion_with_weather WHERE run_id = '$runId'")
+            stmt.execute("""
+                INSERT INTO mart.depletion_with_weather
+                SELECT
+                    d.station_id, d.station_name,
+                    d.parking_bike_tot_cnt, d.shared,
+                    s.station_latitude, s.station_longitude,
+                    w.precip_type,
+                    CASE w.precip_type
+                        WHEN 0 THEN '맑음' WHEN 1 THEN '비'
+                        WHEN 2 THEN '비/눈' WHEN 3 THEN '눈'
+                        ELSE '기타'
+                    END AS precip_label,
+                    w.temperature, w.wind_speed, w.humidity,
+                    d.collected_at, d.run_id
+                FROM mart.depletion_alert d
+                JOIN mart.station_snapshot s ON d.station_id = s.station_id
+                JOIN raw.weather_snapshot w
+                    ON DATE_TRUNC('hour', d.collected_at) = DATE_TRUNC('hour', w.observed_at)
+                WHERE d.run_id = '$runId'
+            """.trimIndent())
+        }
+        val count = conn.createStatement()
+            .executeQuery("SELECT COUNT(*) FROM mart.depletion_with_weather WHERE run_id = '$runId'")
+            .also { it.next() }.getInt(1)
+        log.info("mart.depletion_with_weather 적재 완료 {}건 (run_id={})", count, runId)
+        return count
+    }
+
+    fun readMartDepletionWithWeather(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.depletion_with_weather")
 
     fun readMartWeatherBikeStats(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.weather_bike_stats")
     fun readMartWeatherDepletion(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.weather_depletion")

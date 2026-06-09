@@ -77,6 +77,23 @@ class PostgresClient(url: String, user: String, password: String) {
                     run_id        VARCHAR
                 )
             """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart_depletion_with_weather (
+                    station_id            VARCHAR,
+                    station_name          VARCHAR,
+                    parking_bike_tot_cnt  INTEGER,
+                    shared                INTEGER,
+                    station_latitude      DOUBLE PRECISION,
+                    station_longitude     DOUBLE PRECISION,
+                    precip_type           INTEGER,
+                    precip_label          VARCHAR,
+                    temperature           DOUBLE PRECISION,
+                    wind_speed            DOUBLE PRECISION,
+                    humidity              INTEGER,
+                    collected_at          TIMESTAMP,
+                    run_id                VARCHAR
+                )
+            """.trimIndent())
         }
         log.info("PostgreSQL 초기화 완료")
     }
@@ -176,6 +193,32 @@ class PostgresClient(url: String, user: String, password: String) {
             pstmt.executeBatch()
         }
         log.info("mart_bike_movement 동기화 완료 {}건", rows.size)
+    }
+
+    fun syncDepletionWithWeather(rows: List<Map<String, Any?>>) {
+        conn.createStatement().execute("DELETE FROM mart_depletion_with_weather")
+        if (rows.isEmpty()) return
+        val sql = "INSERT INTO mart_depletion_with_weather VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        conn.prepareStatement(sql).use { pstmt ->
+            rows.forEach { row ->
+                pstmt.setString(1, row["station_id"] as String?)
+                pstmt.setString(2, row["station_name"] as String?)
+                pstmt.setObject(3, row["parking_bike_tot_cnt"])
+                pstmt.setObject(4, row["shared"])
+                pstmt.setObject(5, row["station_latitude"])
+                pstmt.setObject(6, row["station_longitude"])
+                pstmt.setObject(7, row["precip_type"])
+                pstmt.setString(8, row["precip_label"] as String?)
+                pstmt.setObject(9, row["temperature"])
+                pstmt.setObject(10, row["wind_speed"])
+                pstmt.setObject(11, row["humidity"])
+                pstmt.setObject(12, row["collected_at"])
+                pstmt.setString(13, row["run_id"] as String?)
+                pstmt.addBatch()
+            }
+            pstmt.executeBatch()
+        }
+        log.info("mart_depletion_with_weather 동기화 완료 {}건", rows.size)
     }
 
     fun close() = conn.close()
