@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+
 JAR = "/opt/jakdang/ddareungi-batch.jar"
 
 default_args = {
@@ -46,9 +47,25 @@ with DAG(
         bash_command=f"java -jar {JAR} --job=martCongestionAlert --run-id={{{{ run_id }}}}",
     )
 
+    mart_weather_bike_stats = BashOperator(
+        task_id="martWeatherBikeStats",
+        bash_command=f"java -jar {JAR} --job=martWeatherBikeStats --run-id={{{{ run_id }}}}",
+    )
+
+    mart_weather_depletion = BashOperator(
+        task_id="martWeatherDepletion",
+        bash_command=f"java -jar {JAR} --job=martWeatherDepletion --run-id={{{{ run_id }}}}",
+    )
+
+    mart_bike_movement = BashOperator(
+        task_id="martBikeMovement",
+        bash_command=f"java -jar {JAR} --job=martBikeMovement --run-id={{{{ run_id }}}}",
+    )
+
     mart_sync = BashOperator(
         task_id="martSync",
         bash_command=f"java -jar {JAR} --job=martSync --run-id={{{{ run_id }}}}",
     )
 
-    collect >> staging >> mart_snapshot >> mart_depletion >> mart_congestion >> mart_sync
+    collect >> staging >> mart_snapshot >> mart_depletion >> mart_congestion >> \
+    mart_weather_bike_stats >> mart_weather_depletion >> mart_bike_movement >> mart_sync

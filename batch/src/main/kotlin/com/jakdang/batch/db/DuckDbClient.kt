@@ -90,6 +90,37 @@ class DuckDbClient(dbPath: String) {
                     run_id                VARCHAR
                 )
             """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.weather_bike_stats (
+                    precip_type   INTEGER,
+                    precip_label  VARCHAR,
+                    temp_group    DOUBLE,
+                    avg_shared    DOUBLE,
+                    sample_count  BIGINT,
+                    last_updated  TIMESTAMP
+                )
+            """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.weather_depletion (
+                    precip_type      INTEGER,
+                    precip_label     VARCHAR,
+                    temperature      DOUBLE,
+                    depletion_count  BIGINT,
+                    run_id           VARCHAR,
+                    collected_at     TIMESTAMP
+                )
+            """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.bike_movement (
+                    station_id    VARCHAR,
+                    station_name  VARCHAR,
+                    collected_at  TIMESTAMP,
+                    movement      BIGINT,
+                    precip_type   INTEGER,
+                    temperature   DOUBLE,
+                    run_id        VARCHAR
+                )
+            """.trimIndent())
         }
         log.info("DuckDB 초기화 완료: $dbPath")
     }
@@ -217,6 +248,92 @@ class DuckDbClient(dbPath: String) {
             .executeQuery("SELECT COUNT(*) FROM mart.congestion_alert WHERE run_id = '$runId'")
             .also { it.next() }.getInt(1)
         log.info("mart.congestion_alert 적재 완료 {}건 (run_id={})", count, runId)
+        return count
+    }
+
+    fun loadMartWeatherBikeStats(): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.weather_bike_stats")
+            stmt.execute("""
+                INSERT INTO mart.weather_bike_stats
+                SELECT
+                    w.precip_type,
+                    CASE w.precip_type
+                        WHEN 0 THEN '없음' WHEN 1 THEN '비'
+                        WHEN 2 THEN '비/눈' WHEN 3 THEN '눈'
+                        ELSE '기타'
+                    END AS precip_label,
+                    ROUND(w.temperature / 5.0) * 5 AS temp_group,
+                    ROUND(AVG(b.shared), 1) AS avg_shared,
+                    COUNT(*) AS sample_count,
+                    MAX(b.collected_at) AS last_updated
+                FROM staging.bike_status b
+                JOIN raw.weather_snapshot w
+                    ON DATE_TRUNC('hour', b.collected_at) = DATE_TRUNC('hour', w.observed_at)
+                GROUP BY w.precip_type, precip_label, temp_group
+            """.trimIndent())
+        }
+        val count = conn.createStatement().executeQuery("SELECT COUNT(*) FROM mart.weather_bike_stats")
+            .also { it.next() }.getInt(1)
+        log.info("mart.weather_bike_stats 적재 완료 {}건", count)
+        return count
+    }
+
+    fun loadMartWeatherDepletion(runId: String): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.weather_depletion WHERE run_id = '$runId'")
+            stmt.execute("""
+                INSERT INTO mart.weather_depletion
+                SELECT
+                    w.precip_type,
+                    CASE w.precip_type
+                        WHEN 0 THEN '없음' WHEN 1 THEN '비'
+                        WHEN 2 THEN '비/눈' WHEN 3 THEN '눈'
+                        ELSE '기타'
+                    END AS precip_label,
+                    w.temperature,
+                    COUNT(DISTINCT d.station_id) AS depletion_count,
+                    d.run_id,
+                    MAX(d.collected_at) AS collected_at
+                FROM mart.depletion_alert d
+                JOIN raw.weather_snapshot w
+                    ON DATE_TRUNC('hour', d.collected_at) = DATE_TRUNC('hour', w.observed_at)
+                WHERE d.run_id = '$runId'
+                GROUP BY w.precip_type, precip_label, w.temperature, d.run_id
+            """.trimIndent())
+        }
+        val count = conn.createStatement()
+            .executeQuery("SELECT COUNT(*) FROM mart.weather_depletion WHERE run_id = '$runId'")
+            .also { it.next() }.getInt(1)
+        log.info("mart.weather_depletion 적재 완료 {}건 (run_id={})", count, runId)
+        return count
+    }
+
+    fun loadMartBikeMovement(runId: String): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.bike_movement WHERE run_id = '$runId'")
+            stmt.execute("""
+                INSERT INTO mart.bike_movement
+                WITH ranked AS (
+                    SELECT
+                        station_id, station_name, parking_bike_tot_cnt, collected_at, run_id,
+                        LAG(parking_bike_tot_cnt) OVER (PARTITION BY station_id ORDER BY collected_at) AS prev_cnt
+                    FROM staging.bike_status
+                )
+                SELECT
+                    r.station_id, r.station_name, r.collected_at,
+                    ABS(r.parking_bike_tot_cnt - r.prev_cnt) AS movement,
+                    w.precip_type, w.temperature, r.run_id
+                FROM ranked r
+                JOIN raw.weather_snapshot w
+                    ON DATE_TRUNC('hour', r.collected_at) = DATE_TRUNC('hour', w.observed_at)
+                WHERE r.prev_cnt IS NOT NULL AND r.run_id = '$runId'
+            """.trimIndent())
+        }
+        val count = conn.createStatement()
+            .executeQuery("SELECT COUNT(*) FROM mart.bike_movement WHERE run_id = '$runId'")
+            .also { it.next() }.getInt(1)
+        log.info("mart.bike_movement 적재 완료 {}건 (run_id={})", count, runId)
         return count
     }
 
