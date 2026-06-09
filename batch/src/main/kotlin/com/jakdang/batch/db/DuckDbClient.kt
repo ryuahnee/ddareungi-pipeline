@@ -383,7 +383,7 @@ class DuckDbClient(dbPath: String) {
                 SELECT
                     b.station_id,
                     b.station_name,
-                    ROUND(AVG(b.shared), 1) AS avg_shared,
+                    ROUND(100 - AVG(LEAST(b.shared, 100)), 1) AS avg_shared,
                     COUNT(*) AS sample_count,
                     MAX(s.station_latitude) AS station_latitude,
                     MAX(s.station_longitude) AS station_longitude
@@ -392,6 +392,7 @@ class DuckDbClient(dbPath: String) {
                     ON DATE_TRUNC('hour', b.collected_at) = DATE_TRUNC('hour', w.observed_at)
                 JOIN mart.station_snapshot s ON b.station_id = s.station_id
                 WHERE w.precip_type = 0 AND w.temperature >= 25
+                AND b.shared >= 0
                 GROUP BY b.station_id, b.station_name
                 ORDER BY avg_shared DESC
             """.trimIndent())
@@ -421,12 +422,13 @@ class DuckDbClient(dbPath: String) {
                         ELSE '기타'
                     END AS precip_label,
                     w.temperature,
-                    ROUND(AVG(b.shared), 1) AS avg_shared,
+                    ROUND(100 - AVG(LEAST(b.shared, 100)), 1) AS avg_shared,
                     COUNT(DISTINCT b.station_id) AS total_stations,
                     COUNT(*) AS sample_count
                 FROM staging.bike_status b
                 JOIN raw.weather_snapshot w
                     ON DATE_TRUNC('hour', b.collected_at) = DATE_TRUNC('hour', w.observed_at)
+                WHERE b.shared >= 0
                 GROUP BY DATE_TRUNC('hour', b.collected_at), w.precip_type, precip_label, w.temperature
                 ORDER BY collected_at
             """.trimIndent())
