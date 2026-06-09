@@ -259,7 +259,7 @@ class DuckDbClient(dbPath: String) {
                 SELECT
                     w.precip_type,
                     CASE w.precip_type
-                        WHEN 0 THEN '없음' WHEN 1 THEN '비'
+                        WHEN 0 THEN '맑음' WHEN 1 THEN '비'
                         WHEN 2 THEN '비/눈' WHEN 3 THEN '눈'
                         ELSE '기타'
                     END AS precip_label,
@@ -287,7 +287,7 @@ class DuckDbClient(dbPath: String) {
                 SELECT
                     w.precip_type,
                     CASE w.precip_type
-                        WHEN 0 THEN '없음' WHEN 1 THEN '비'
+                        WHEN 0 THEN '맑음' WHEN 1 THEN '비'
                         WHEN 2 THEN '비/눈' WHEN 3 THEN '눈'
                         ELSE '기타'
                     END AS precip_label,
