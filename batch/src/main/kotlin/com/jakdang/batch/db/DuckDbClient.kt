@@ -122,6 +122,17 @@ class DuckDbClient(dbPath: String) {
                 )
             """.trimIndent())
             stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart.hourly_weather_bike (
+                    collected_at    TIMESTAMP,
+                    precip_type     INTEGER,
+                    precip_label    VARCHAR,
+                    temperature     DOUBLE,
+                    avg_shared      DOUBLE,
+                    total_stations  INTEGER,
+                    sample_count    BIGINT
+                )
+            """.trimIndent())
+            stmt.execute("""
                 CREATE TABLE IF NOT EXISTS mart.depletion_with_weather (
                     station_id            VARCHAR,
                     station_name          VARCHAR,
@@ -353,6 +364,39 @@ class DuckDbClient(dbPath: String) {
         log.info("mart.bike_movement 적재 완료 {}건 (run_id={})", count, runId)
         return count
     }
+
+    fun loadMartHourlyWeatherBike(): Int {
+        conn.createStatement().use { stmt ->
+            stmt.execute("DELETE FROM mart.hourly_weather_bike")
+            stmt.execute("""
+                INSERT INTO mart.hourly_weather_bike
+                SELECT
+                    DATE_TRUNC('hour', b.collected_at) AS collected_at,
+                    w.precip_type,
+                    CASE w.precip_type
+                        WHEN 0 THEN '맑음' WHEN 1 THEN '비'
+                        WHEN 2 THEN '비/눈' WHEN 3 THEN '눈'
+                        ELSE '기타'
+                    END AS precip_label,
+                    w.temperature,
+                    ROUND(AVG(b.shared), 1) AS avg_shared,
+                    COUNT(DISTINCT b.station_id) AS total_stations,
+                    COUNT(*) AS sample_count
+                FROM staging.bike_status b
+                JOIN raw.weather_snapshot w
+                    ON DATE_TRUNC('hour', b.collected_at) = DATE_TRUNC('hour', w.observed_at)
+                GROUP BY DATE_TRUNC('hour', b.collected_at), w.precip_type, precip_label, w.temperature
+                ORDER BY collected_at
+            """.trimIndent())
+        }
+        val count = conn.createStatement()
+            .executeQuery("SELECT COUNT(*) FROM mart.hourly_weather_bike")
+            .also { it.next() }.getInt(1)
+        log.info("mart.hourly_weather_bike 적재 완료 {}건", count)
+        return count
+    }
+
+    fun readMartHourlyWeatherBike(): List<Map<String, Any?>> = readTable("SELECT * FROM mart.hourly_weather_bike ORDER BY collected_at")
 
     fun loadMartDepletionWithWeather(runId: String): Int {
         conn.createStatement().use { stmt ->

@@ -47,6 +47,11 @@ with DAG(
         bash_command=f"java -jar {JAR} --job=martCongestionAlert --run-id={{{{ run_id }}}}",
     )
 
+    mart_hourly_weather_bike = BashOperator(
+        task_id="martHourlyWeatherBike",
+        bash_command=f"java -jar {JAR} --job=martHourlyWeatherBike --run-id={{{{ run_id }}}}",
+    )
+
     mart_depletion_with_weather = BashOperator(
         task_id="martDepletionWithWeather",
         bash_command=f"java -jar {JAR} --job=martDepletionWithWeather --run-id={{{{ run_id }}}}",
@@ -73,5 +78,5 @@ with DAG(
     )
 
     collect >> staging >> mart_snapshot >> mart_depletion >> mart_congestion >> \
-    mart_depletion_with_weather >> \
+    mart_hourly_weather_bike >> mart_depletion_with_weather >> \
     mart_weather_bike_stats >> mart_weather_depletion >> mart_bike_movement >> mart_sync
