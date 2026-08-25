@@ -1,12 +1,12 @@
 package com.jakdang.batch.job
 
 import com.jakdang.batch.client.DdareungiClient
-import com.jakdang.batch.db.DuckDbClient
+import com.jakdang.batch.db.MySqlClient
 import org.slf4j.LoggerFactory
 
 class DdareungiRealtimeSyncJob(
     private val client: DdareungiClient,
-    private val db: DuckDbClient,
+    private val mysql: MySqlClient,
     private val runId: String,
     private val collectedAt: String
 ){
@@ -18,6 +18,6 @@ suspend fun execute() {
     val stations = client.fetchAll()
 
     log.info("수집 완료 총 {}건", stations.size)
-    db.insertBikeStatus(stations, collectedAt, runId)
+    mysql.insertBikeStatus(stations, collectedAt, runId)
     }
 }

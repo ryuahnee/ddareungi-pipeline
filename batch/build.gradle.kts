@@ -21,11 +21,11 @@ dependencies {
     // JSON
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
-    // DuckDB
-    implementation("org.duckdb:duckdb_jdbc:1.1.3")
-
     // PostgreSQL
     implementation("org.postgresql:postgresql:42.7.3")
+
+    // MySQL (NAS 원장)
+    implementation("com.mysql:mysql-connector-j:8.4.0")
 
     // 로깅
     implementation("ch.qos.logback:logback-classic:1.4.14")

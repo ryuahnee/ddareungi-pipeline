@@ -1,4 +1,5 @@
 .env
+infra/docker/.env
 infra/airflow/logs/
 *.db
 *.jar
