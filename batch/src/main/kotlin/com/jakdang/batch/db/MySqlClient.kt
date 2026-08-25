@@ -357,6 +357,135 @@ class MySqlClient(url: String, user: String, password: String) {
         "SELECT STR_TO_DATE(locdate, '%Y%m%d') AS locdate, date_name, is_holiday FROM holiday"
     )
 
+    /** 시간대별 날씨+자전거 집계. 완료된 시간대만 (< 현재 정각) */
+    fun readHourlyWeatherBike(): List<Map<String, Any?>> = readTable(
+        """
+        SELECT DATE_ADD(DATE(bs.collected_at), INTERVAL HOUR(bs.collected_at) HOUR) AS collected_at,
+               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN 1 ELSE 0 END AS precip_type,
+               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN '비' ELSE '맑음' END AS precip_label,
+               wa.temperature,
+               ROUND(AVG(bs.shared), 1) AS avg_shared,
+               COUNT(DISTINCT bs.station_id) AS total_stations,
+               COUNT(*) AS sample_count
+        FROM bike_status bs
+        LEFT JOIN weather_asos wa
+            ON DATE(bs.collected_at) = DATE(wa.observed_at)
+            AND HOUR(bs.collected_at) = HOUR(wa.observed_at)
+            AND wa.stn = 108
+        WHERE bs.collected_at < DATE_ADD(DATE(NOW()), INTERVAL HOUR(NOW()) HOUR)
+        GROUP BY DATE_ADD(DATE(bs.collected_at), INTERVAL HOUR(bs.collected_at) HOUR),
+                 precip_type, precip_label, wa.temperature
+        ORDER BY collected_at
+        """.trimIndent()
+    )
+
+    /** 날씨별(강수 여부 × 5도 구간) 평균 거치율 (전체 재계산) */
+    fun readWeatherBikeStats(): List<Map<String, Any?>> = readTable(
+        """
+        SELECT CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN 1 ELSE 0 END AS precip_type,
+               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN '비' ELSE '맑음' END AS precip_label,
+               FLOOR(wa.temperature / 5) * 5 AS temp_group,
+               ROUND(AVG(bs.shared), 1) AS avg_shared,
+               COUNT(*) AS sample_count,
+               NOW() AS last_updated
+        FROM bike_status bs
+        JOIN weather_asos wa
+            ON DATE(bs.collected_at) = DATE(wa.observed_at)
+            AND HOUR(bs.collected_at) = HOUR(wa.observed_at)
+            AND wa.stn = 108
+        GROUP BY precip_type, precip_label, temp_group
+        """.trimIndent()
+    )
+
+    /** run_id 기준 최신 스냅샷의 날씨별 고갈 카운트 */
+    fun readWeatherDepletion(runId: String): List<Map<String, Any?>> = readTable(
+        """
+        SELECT CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN 1 ELSE 0 END AS precip_type,
+               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN '비' ELSE '맑음' END AS precip_label,
+               wa.temperature,
+               COUNT(DISTINCT CASE WHEN bs.shared < 10 THEN bs.station_id END) AS depletion_count,
+               ? AS run_id,
+               MAX(bs.collected_at) AS collected_at
+        FROM bike_status bs
+        LEFT JOIN weather_asos wa
+            ON DATE(bs.collected_at) = DATE(wa.observed_at)
+            AND HOUR(bs.collected_at) = HOUR(wa.observed_at)
+            AND wa.stn = 108
+        WHERE bs.run_id = ?
+          AND bs.collected_at = (SELECT MAX(collected_at) FROM bike_status WHERE run_id = ?)
+        GROUP BY precip_type, precip_label, wa.temperature
+        """.trimIndent(),
+        runId, runId, runId
+    )
+
+    /** run_id 기준 고갈 대여소 + 날씨 JOIN */
+    fun readDepletionWithWeather(runId: String): List<Map<String, Any?>> = readTable(
+        """
+        SELECT bs.station_id, bs.station_name,
+               bs.parking_bike_tot_cnt, bs.shared,
+               bs.station_latitude, bs.station_longitude,
+               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN 1 ELSE 0 END AS precip_type,
+               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN '비' ELSE '맑음' END AS precip_label,
+               wa.temperature, wa.wind_speed,
+               CAST(wa.humidity AS SIGNED) AS humidity,
+               bs.collected_at, bs.run_id
+        FROM bike_status bs
+        LEFT JOIN weather_asos wa
+            ON DATE(bs.collected_at) = DATE(wa.observed_at)
+            AND HOUR(bs.collected_at) = HOUR(wa.observed_at)
+            AND wa.stn = 108
+        WHERE bs.run_id = ?
+          AND bs.shared < 10
+          AND bs.collected_at = (SELECT MAX(collected_at) FROM bike_status WHERE run_id = ?)
+        """.trimIndent(),
+        runId, runId
+    )
+
+    /** 날짜×시간대×day_type 고갈율 (전체 재계산, 완료된 시간대만) */
+    fun readHolidayBikeStats(): List<Map<String, Any?>> = readTable(
+        """
+        SELECT DATE(bs.collected_at) AS date,
+               HOUR(bs.collected_at) AS hour_of_day,
+               CASE WHEN h.locdate IS NOT NULL THEN '공휴일'
+                    WHEN DAYOFWEEK(bs.collected_at) IN (1, 7) THEN '주말'
+                    ELSE '평일' END AS day_type,
+               COALESCE(h.date_name, '') AS holiday_name,
+               ROUND(
+                   COUNT(DISTINCT CASE WHEN bs.shared < 10 THEN bs.station_id END) * 100.0
+                   / NULLIF(COUNT(DISTINCT bs.station_id), 0), 1
+               ) AS depletion_rate,
+               COUNT(*) AS sample_count
+        FROM bike_status bs
+        LEFT JOIN holiday h
+            ON DATE_FORMAT(bs.collected_at, '%Y%m%d') = h.locdate AND h.is_holiday = 'Y'
+        WHERE bs.collected_at < DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00')
+        GROUP BY DATE(bs.collected_at), HOUR(bs.collected_at), day_type, holiday_name
+        """.trimIndent()
+    )
+
+    /** 대여소별 × day_type 고갈율 (전체 재계산, Geomap용) */
+    fun readStationHolidayDepletion(): List<Map<String, Any?>> = readTable(
+        """
+        SELECT bs.station_id, bs.station_name,
+               AVG(bs.station_latitude) AS station_latitude,
+               AVG(bs.station_longitude) AS station_longitude,
+               CASE WHEN h.locdate IS NOT NULL THEN '공휴일'
+                    WHEN DAYOFWEEK(bs.collected_at) IN (1, 7) THEN '주말'
+                    ELSE '평일' END AS day_type,
+               ROUND(
+                   COUNT(DISTINCT CASE WHEN bs.shared < 10
+                       THEN DATE_FORMAT(bs.collected_at, '%Y-%m-%d %H') END) * 100.0
+                   / NULLIF(COUNT(DISTINCT DATE_FORMAT(bs.collected_at, '%Y-%m-%d %H')), 0), 1
+               ) AS depletion_rate,
+               COUNT(DISTINCT DATE_FORMAT(bs.collected_at, '%Y-%m-%d %H')) AS sample_hours
+        FROM bike_status bs
+        LEFT JOIN holiday h
+            ON DATE_FORMAT(bs.collected_at, '%Y%m%d') = h.locdate AND h.is_holiday = 'Y'
+        WHERE bs.collected_at < DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00')
+        GROUP BY bs.station_id, bs.station_name, day_type
+        """.trimIndent()
+    )
+
     private fun readTable(sql: String, vararg params: Any?): List<Map<String, Any?>> {
         val rows = mutableListOf<Map<String, Any?>>()
         conn.prepareStatement(sql).use { pstmt ->

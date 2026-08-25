@@ -22,6 +22,8 @@ class MartRealtimeSyncJob(
         postgres.syncMartSnapshot(mysql.readMartSnapshot(runId))
         postgres.syncMartAlert("mart_depletion_alert", mysql.readMartDepletionAlert(runId))
         postgres.syncMartAlert("mart_congestion_alert", mysql.readMartCongestionAlert(runId))
+        postgres.syncWeatherDepletion(mysql.readWeatherDepletion(runId))
+        postgres.syncDepletionWithWeather(mysql.readDepletionWithWeather(runId))
 
         log.info("실시간 mart 동기화 완료 runId=$runId")
     }
