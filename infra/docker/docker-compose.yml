@@ -5,6 +5,8 @@ x-airflow-common: &airflow-common
     context: .
     dockerfile: Dockerfile
   environment: &airflow-common-env
+    TZ: Asia/Seoul
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
@@ -15,16 +17,18 @@ x-airflow-common: &airflow-common
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     DDAREUNGI_API_KEY: ${DDAREUNGI_API_KEY}
     WEATHER_API_KEY: ${WEATHER_API_KEY}
-    DUCKDB_PATH: /opt/data/ddareungi.db
+    HOLIDAY_API_KEY: ${HOLIDAY_API_KEY}
     GRAFANA_DB_URL: jdbc:postgresql://grafana-db:5432/grafana
     GRAFANA_DB_USER: grafana
     GRAFANA_DB_PASSWORD: grafana
+    MYSQL_URL: "${MYSQL_URL}"
+    MYSQL_USER: ${MYSQL_USER}
+    MYSQL_PASSWORD: ${MYSQL_PASSWORD}
   volumes:
     - ../airflow/dags:/opt/airflow/dags
     - ../airflow/logs:/opt/airflow/logs
     - ../airflow/plugins:/opt/airflow/plugins
     - ../../batch/build/libs:/opt/jakdang
-    - ../../data:/opt/data
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     postgres:
@@ -121,6 +125,8 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin1234
+      # collected_at은 KST 벽시계값을 naive로 저장 → Grafana 변환 끄기(UTC 고정)로 그대로 표시
+      GF_USERS_DEFAULT_TIMEZONE: utc
     volumes:
       - grafana-storage:/var/lib/grafana
     depends_on:
