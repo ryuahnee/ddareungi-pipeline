@@ -4,6 +4,7 @@ import com.jakdang.batch.client.AsosClient
 import com.jakdang.batch.client.BikeUseDailyClient
 import com.jakdang.batch.client.DdareungiClient
 import com.jakdang.batch.client.StationMasterClient
+import com.jakdang.batch.client.SubwayClient
 import com.jakdang.batch.db.MySqlClient
 import com.jakdang.batch.db.PostgresClient
 import com.jakdang.batch.job.AsosBackfillJob
@@ -12,9 +13,11 @@ import com.jakdang.batch.job.DdareungiRealtimeSyncJob
 import com.jakdang.batch.job.MartHolidayAnalysisSyncJob
 import com.jakdang.batch.job.MartRealtimeSyncJob
 import com.jakdang.batch.job.MartStationScdSyncJob
+import com.jakdang.batch.job.MartSubwayRushDepletionJob
 import com.jakdang.batch.job.MartUseHistorySyncJob
 import com.jakdang.batch.job.MartWeatherAnalysisSyncJob
 import com.jakdang.batch.job.StationMasterSyncJob
+import com.jakdang.batch.job.SubwayStationSyncJob
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
 
@@ -192,6 +195,34 @@ fun main(args: Array<String>){
                     System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
                 )
                 MartHolidayAnalysisSyncJob(mysql, postgres, runId).execute()
+                mysql.close()
+                postgres.close()
+            }
+            "subwayStationSync" -> {
+                val client = SubwayClient(
+                    System.getenv("SUBWAY_API_KEY") ?: error("SUBWAY_API_KEY 환경변수 필수")
+                )
+                val mysql = MySqlClient(
+                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
+                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
+                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
+                )
+                SubwayStationSyncJob(client, mysql, runId).execute()
+                client.close()
+                mysql.close()
+            }
+            "martSubwayRushDepletion" -> {
+                val mysql = MySqlClient(
+                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
+                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
+                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
+                )
+                val postgres = PostgresClient(
+                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
+                )
+                MartSubwayRushDepletionJob(mysql, postgres, runId).execute()
                 mysql.close()
                 postgres.close()
             }

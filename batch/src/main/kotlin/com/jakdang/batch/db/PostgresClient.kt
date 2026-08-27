@@ -199,6 +199,19 @@ class PostgresClient(url: String, user: String, password: String) {
                     run_id        VARCHAR
                 )
             """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS mart_subway_rush_depletion (
+                    out_stn_num          VARCHAR,
+                    stn_kr_nm            VARCHAR,
+                    line_nm              VARCHAR,
+                    subway_lat           DOUBLE PRECISION,
+                    subway_lng           DOUBLE PRECISION,
+                    hour_of_day          INTEGER,
+                    depletion_rate       DOUBLE PRECISION,
+                    nearby_station_count INTEGER,
+                    sample_count         BIGINT
+                )
+            """.trimIndent())
         }
         try {
             conn.createStatement().use {
@@ -714,6 +727,28 @@ class PostgresClient(url: String, user: String, password: String) {
             pstmt.executeBatch()
         }
         log.info("mart_weather_threshold 동기화 완료 {}건", rows.size)
+    }
+
+    fun syncSubwayRushDepletion(rows: List<Map<String, Any?>>) {
+        conn.createStatement().execute("DELETE FROM mart_subway_rush_depletion")
+        if (rows.isEmpty()) { log.warn("mart_subway_rush_depletion: 0건"); return }
+        val sql = "INSERT INTO mart_subway_rush_depletion VALUES (?,?,?,?,?,?,?,?,?)"
+        conn.prepareStatement(sql).use { pstmt ->
+            rows.forEach { row ->
+                pstmt.setString(1, row["out_stn_num"] as String?)
+                pstmt.setString(2, row["stn_kr_nm"] as String?)
+                pstmt.setString(3, row["line_nm"] as String?)
+                pstmt.setObject(4, (row["subway_lat"] as Number?)?.toDouble())
+                pstmt.setObject(5, (row["subway_lng"] as Number?)?.toDouble())
+                pstmt.setObject(6, (row["hour_of_day"] as Number?)?.toInt())
+                pstmt.setObject(7, (row["depletion_rate"] as Number?)?.toDouble())
+                pstmt.setObject(8, (row["nearby_station_count"] as Number?)?.toInt())
+                pstmt.setObject(9, (row["sample_count"] as Number?)?.toLong())
+                pstmt.addBatch()
+            }
+            pstmt.executeBatch()
+        }
+        log.info("mart_subway_rush_depletion 동기화 완료 {}건", rows.size)
     }
 
     fun close() = conn.close()

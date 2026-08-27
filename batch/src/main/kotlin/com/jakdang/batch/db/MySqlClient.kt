@@ -4,6 +4,7 @@ import com.jakdang.batch.model.AsosObservation
 import com.jakdang.batch.model.BikeStationRow
 import com.jakdang.batch.model.BikeUseDayRow
 import com.jakdang.batch.model.StationMasterRow
+import com.jakdang.batch.model.SubwayStation
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.DriverManager
@@ -18,6 +19,24 @@ class MySqlClient(url: String, user: String, password: String) {
 
     init {
         conn.createStatement().use { stmt ->
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS subway_station (
+                    out_stn_num VARCHAR(10)  NOT NULL,
+                    stn_kr_nm   VARCHAR(50)  NOT NULL,
+                    line_nm     VARCHAR(50)  NOT NULL,
+                    conv_x      DOUBLE       NOT NULL,
+                    conv_y      DOUBLE       NOT NULL,
+                    PRIMARY KEY (out_stn_num)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """.trimIndent())
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS bike_station_subway_map (
+                    station_id  VARCHAR(20) NOT NULL,
+                    out_stn_num VARCHAR(10) NOT NULL,
+                    distance_m  DOUBLE      NOT NULL,
+                    PRIMARY KEY (station_id, out_stn_num)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """.trimIndent())
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS weather_asos (
                     id            BIGINT       NOT NULL AUTO_INCREMENT,
@@ -349,6 +368,74 @@ class MySqlClient(url: String, user: String, password: String) {
                ROUND(AVG(humidity), 1)    AS avg_humidity
         FROM weather_asos
         GROUP BY DATE(observed_at)
+        """.trimIndent()
+    )
+
+    /** 지하철역 전체 교체 적재 */
+    fun upsertSubwayStations(stations: List<SubwayStation>): Int {
+        conn.createStatement().execute("DELETE FROM subway_station")
+        if (stations.isEmpty()) return 0
+        conn.prepareStatement("INSERT INTO subway_station VALUES (?,?,?,?,?)").use { pstmt ->
+            stations.forEach { s ->
+                pstmt.setString(1, s.outStnNum)
+                pstmt.setString(2, s.stnKrNm)
+                pstmt.setString(3, s.lineNm)
+                pstmt.setDouble(4, s.convX.toDouble())
+                pstmt.setDouble(5, s.convY.toDouble())
+                pstmt.addBatch()
+            }
+            pstmt.executeBatch()
+        }
+        log.info("subway_station 저장 완료 {}건", stations.size)
+        return stations.size
+    }
+
+    /** 대여소-지하철역 매핑 전체 교체 적재 */
+    fun upsertBikeStationSubwayMap(mappings: List<Triple<String, String, Double>>): Int {
+        conn.createStatement().execute("DELETE FROM bike_station_subway_map")
+        if (mappings.isEmpty()) return 0
+        conn.prepareStatement("INSERT INTO bike_station_subway_map VALUES (?,?,?)").use { pstmt ->
+            mappings.forEach { (stationId, outStnNum, distM) ->
+                pstmt.setString(1, stationId)
+                pstmt.setString(2, outStnNum)
+                pstmt.setDouble(3, distM)
+                pstmt.addBatch()
+            }
+            pstmt.executeBatch()
+        }
+        log.info("bike_station_subway_map 저장 완료 {}건", mappings.size)
+        return mappings.size
+    }
+
+    /** 따릉이 대여소별 현재 좌표 (bike_station SCD에서 로드, 빠름) */
+    fun readDistinctBikeStations(): List<Triple<String, Double, Double>> =
+        readTable(
+            "SELECT rntls_id AS station_id, lat, lot AS lng FROM bike_station WHERE is_current = 1 AND lat IS NOT NULL AND lot IS NOT NULL"
+        ).map {
+            Triple(
+                it["station_id"] as String,
+                (it["lat"] as Number).toDouble(),
+                (it["lng"] as Number).toDouble()
+            )
+        }
+
+    /** 지하철역별 × 시간대별 반경 500m 내 따릉이 고갈율 (전체 재계산) */
+    fun readSubwayRushDepletion(): List<Map<String, Any?>> = readTable(
+        """
+        SELECT s.out_stn_num, s.stn_kr_nm, s.line_nm,
+               s.conv_y AS subway_lat, s.conv_x AS subway_lng,
+               HOUR(bs.collected_at) AS hour_of_day,
+               ROUND(
+                   COUNT(DISTINCT CASE WHEN bs.shared < 10 THEN bs.station_id END) * 100.0
+                   / NULLIF(COUNT(DISTINCT bs.station_id), 0), 1
+               ) AS depletion_rate,
+               COUNT(DISTINCT bs.station_id) AS nearby_station_count,
+               COUNT(*) AS sample_count
+        FROM subway_station s
+        JOIN bike_station_subway_map m ON m.out_stn_num = s.out_stn_num
+        JOIN bike_status bs ON bs.station_id = m.station_id
+        WHERE bs.collected_at < DATE_ADD(DATE(NOW()), INTERVAL HOUR(NOW()) HOUR)
+        GROUP BY s.out_stn_num, s.stn_kr_nm, s.line_nm, s.conv_y, s.conv_x, HOUR(bs.collected_at)
         """.trimIndent()
     )
 

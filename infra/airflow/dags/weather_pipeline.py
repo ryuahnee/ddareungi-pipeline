@@ -46,4 +46,9 @@ with DAG(
         bash_command=f"java -jar {JAR} --job=martHolidayAnalysisSync --run-id={{{{ run_id }}}}",
     )
 
-    asos_collect >> [mart_weather, mart_holiday]
+    mart_subway = BashOperator(
+        task_id="martSubwayRushDepletion",
+        bash_command=f"java -jar {JAR} --job=martSubwayRushDepletion --run-id={{{{ run_id }}}}",
+    )
+
+    asos_collect >> [mart_weather, mart_holiday, mart_subway]
