@@ -11,12 +11,12 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
-# 지하철역 마스터는 거의 변하지 않으므로 매월 1일 1회 실행.
-# subwayStationSync: 역 수집 + 따릉이 대여소-역 반경 500m 매핑 테이블 재계산
+# 지하철역 마스터: 매월 1일 역 수집 + 매핑 재계산
+# martSubwayRushDepletion: bike_status 4백만건 JOIN으로 ~6분 소요 → 매시 실행 불가, 일 1회로 분리
 with DAG(
     dag_id="subway_pipeline",
     default_args=default_args,
-    schedule_interval="0 3 1 * *",  # 매월 1일 03:00
+    schedule_interval="0 4 * * *",  # 매일 04:00 (역 마스터는 월 1일, mart는 매일)
     start_date=datetime(2026, 8, 1),
     catchup=False,
     max_active_runs=1,
@@ -27,3 +27,10 @@ with DAG(
         task_id="subwayStationSync",
         bash_command=f"java -jar {JAR} --job=subwayStationSync --run-id={{{{ run_id }}}}",
     )
+
+    mart_subway = BashOperator(
+        task_id="martSubwayRushDepletion",
+        bash_command=f"java -jar {JAR} --job=martSubwayRushDepletion --run-id={{{{ run_id }}}}",
+    )
+
+    subway_station_sync >> mart_subway
