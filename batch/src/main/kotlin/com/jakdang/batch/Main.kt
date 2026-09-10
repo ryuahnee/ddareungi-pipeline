@@ -10,12 +10,9 @@ import com.jakdang.batch.db.PostgresClient
 import com.jakdang.batch.job.AsosBackfillJob
 import com.jakdang.batch.job.BikeUseDailyBackfillJob
 import com.jakdang.batch.job.DdareungiRealtimeSyncJob
-import com.jakdang.batch.job.MartHolidayAnalysisSyncJob
 import com.jakdang.batch.job.MartRealtimeSyncJob
 import com.jakdang.batch.job.MartStationScdSyncJob
 import com.jakdang.batch.job.MartSubwayRushDepletionJob
-import com.jakdang.batch.job.MartUseHistorySyncJob
-import com.jakdang.batch.job.MartWeatherAnalysisSyncJob
 import com.jakdang.batch.job.StationMasterSyncJob
 import com.jakdang.batch.job.SubwayStationSyncJob
 import kotlinx.coroutines.runBlocking
@@ -58,26 +55,6 @@ fun main(args: Array<String>){
                     System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
                 )
                 MartRealtimeSyncJob(mysql, postgres, runId).execute()
-                mysql.close()
-                postgres.close()
-            }
-            "martUseHistorySync" -> {
-                val mysql = MySqlClient(
-                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
-                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
-                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
-                )
-                val postgres = PostgresClient(
-                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
-                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
-                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
-                )
-                // 파라미터 없으면 전월~당월 (증분)
-                val ymFmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMM")
-                val now = java.time.LocalDate.now()
-                val from = params["from"] ?: now.minusMonths(1).format(ymFmt)
-                val to   = params["to"]   ?: now.format(ymFmt)
-                MartUseHistorySyncJob(mysql, postgres, runId, from, to).execute()
                 mysql.close()
                 postgres.close()
             }
@@ -167,36 +144,6 @@ fun main(args: Array<String>){
                 }
                 client.close()
                 mysql.close()
-            }
-            "martWeatherAnalysisSync" -> {
-                val mysql = MySqlClient(
-                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
-                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
-                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
-                )
-                val postgres = PostgresClient(
-                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
-                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
-                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
-                )
-                MartWeatherAnalysisSyncJob(mysql, postgres, runId).execute()
-                mysql.close()
-                postgres.close()
-            }
-            "martHolidayAnalysisSync" -> {
-                val mysql = MySqlClient(
-                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
-                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
-                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
-                )
-                val postgres = PostgresClient(
-                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
-                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
-                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
-                )
-                MartHolidayAnalysisSyncJob(mysql, postgres, runId).execute()
-                mysql.close()
-                postgres.close()
             }
             "subwayStationSync" -> {
                 val client = SubwayClient(

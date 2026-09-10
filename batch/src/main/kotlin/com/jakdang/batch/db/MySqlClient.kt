@@ -315,62 +315,6 @@ class MySqlClient(url: String, user: String, password: String) {
         """.trimIndent()
     )
 
-    /** 월별 이용 집계: 일×권종×성별×연령 (rent_dt 클러스터 PK + 월별 파티션으로 순차 스캔) */
-    fun readUseDailyAgg(ym: String): List<Map<String, Any?>> {
-        val start = "${ym.substring(0, 4)}-${ym.substring(4, 6)}-01"
-        return readTable(
-            """
-            SELECT rent_dt, rent_type, gender_cd, age_type,
-                   SUM(use_cnt)    AS use_cnt,
-                   SUM(move_meter) AS move_meter,
-                   SUM(move_time)  AS move_time,
-                   SUM(exer_amt)   AS exer_amt,
-                   SUM(carbon_amt) AS carbon_amt
-            FROM bike_use_daily
-            WHERE rent_dt >= ? AND rent_dt < DATE_ADD(?, INTERVAL 1 MONTH)
-            GROUP BY rent_dt, rent_type, gender_cd, age_type
-            """.trimIndent(), start, start
-        )
-    }
-
-    /**
-     * 월별 이용 집계: rent_ym×권종×성별×연령.
-     * bike_use_monthly 전체 + bike_use_daily에서 monthly에 없는 월(예: 최신월)만 월롤업하여 연속 확보.
-     */
-    fun readUseMonthlyAgg(): List<Map<String, Any?>> = readTable(
-        """
-        SELECT rent_ym, rent_type, gender_cd, age_type,
-               SUM(use_cnt)    AS use_cnt,
-               SUM(move_meter) AS move_meter,
-               SUM(move_time)  AS move_time,
-               SUM(exer_amt)   AS exer_amt,
-               SUM(carbon_amt) AS carbon_amt
-        FROM bike_use_monthly
-        GROUP BY rent_ym, rent_type, gender_cd, age_type
-        UNION ALL
-        SELECT DATE_FORMAT(rent_dt, '%Y%m'), rent_type, gender_cd, age_type,
-               SUM(use_cnt), SUM(move_meter), SUM(move_time), SUM(exer_amt), SUM(carbon_amt)
-        FROM bike_use_daily
-        WHERE DATE_FORMAT(rent_dt, '%Y%m') NOT IN (SELECT DISTINCT rent_ym FROM bike_use_monthly)
-        GROUP BY DATE_FORMAT(rent_dt, '%Y%m'), rent_type, gender_cd, age_type
-        """.trimIndent()
-    )
-
-    /** 일별 날씨 요약 (전체, 소량) */
-    fun readWeatherDaily(): List<Map<String, Any?>> = readTable(
-        """
-        SELECT DATE(observed_at) AS obs_date,
-               ROUND(AVG(temperature), 1) AS avg_temp,
-               MIN(temperature)           AS min_temp,
-               MAX(temperature)           AS max_temp,
-               ROUND(SUM(COALESCE(precipitation, 0)), 1) AS total_precip,
-               ROUND(AVG(wind_speed), 1)  AS avg_wind,
-               ROUND(AVG(humidity), 1)    AS avg_humidity
-        FROM weather_asos
-        GROUP BY DATE(observed_at)
-        """.trimIndent()
-    )
-
     /** 지하철역 전체 교체 적재 */
     fun upsertSubwayStations(stations: List<SubwayStation>): Int {
         conn.createStatement().execute("DELETE FROM subway_station")
@@ -439,51 +383,6 @@ class MySqlClient(url: String, user: String, password: String) {
         """.trimIndent()
     )
 
-    /** 공휴일 전체 (dim). locdate yyyyMMdd → DATE 변환 */
-    fun readHoliday(): List<Map<String, Any?>> = readTable(
-        "SELECT STR_TO_DATE(locdate, '%Y%m%d') AS locdate, date_name, is_holiday FROM holiday"
-    )
-
-    /** 시간대별 날씨+자전거 집계. 완료된 시간대만 (< 현재 정각) */
-    fun readHourlyWeatherBike(): List<Map<String, Any?>> = readTable(
-        """
-        SELECT DATE_ADD(DATE(bs.collected_at), INTERVAL HOUR(bs.collected_at) HOUR) AS collected_at,
-               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN 1 ELSE 0 END AS precip_type,
-               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN '비' ELSE '맑음' END AS precip_label,
-               wa.temperature,
-               ROUND(AVG(bs.shared), 1) AS avg_shared,
-               COUNT(DISTINCT bs.station_id) AS total_stations,
-               COUNT(*) AS sample_count
-        FROM bike_status bs
-        LEFT JOIN weather_asos wa
-            ON DATE(bs.collected_at) = DATE(wa.observed_at)
-            AND HOUR(bs.collected_at) = HOUR(wa.observed_at)
-            AND wa.stn = 108
-        WHERE bs.collected_at < DATE_ADD(DATE(NOW()), INTERVAL HOUR(NOW()) HOUR)
-        GROUP BY DATE_ADD(DATE(bs.collected_at), INTERVAL HOUR(bs.collected_at) HOUR),
-                 precip_type, precip_label, wa.temperature
-        ORDER BY collected_at
-        """.trimIndent()
-    )
-
-    /** 날씨별(강수 여부 × 5도 구간) 평균 거치율 (전체 재계산) */
-    fun readWeatherBikeStats(): List<Map<String, Any?>> = readTable(
-        """
-        SELECT CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN 1 ELSE 0 END AS precip_type,
-               CASE WHEN COALESCE(wa.precipitation, 0) > 0 THEN '비' ELSE '맑음' END AS precip_label,
-               FLOOR(wa.temperature / 5) * 5 AS temp_group,
-               ROUND(AVG(bs.shared), 1) AS avg_shared,
-               COUNT(*) AS sample_count,
-               NOW() AS last_updated
-        FROM bike_status bs
-        JOIN weather_asos wa
-            ON DATE(bs.collected_at) = DATE(wa.observed_at)
-            AND HOUR(bs.collected_at) = HOUR(wa.observed_at)
-            AND wa.stn = 108
-        GROUP BY precip_type, precip_label, temp_group
-        """.trimIndent()
-    )
-
     /** run_id 기준 최신 스냅샷의 날씨별 고갈 카운트 */
     fun readWeatherDepletion(runId: String): List<Map<String, Any?>> = readTable(
         """
@@ -526,51 +425,6 @@ class MySqlClient(url: String, user: String, password: String) {
           AND bs.collected_at = (SELECT MAX(collected_at) FROM bike_status WHERE run_id = ?)
         """.trimIndent(),
         runId, runId
-    )
-
-    /** 날짜×시간대×day_type 고갈율 (전체 재계산, 완료된 시간대만) */
-    fun readHolidayBikeStats(): List<Map<String, Any?>> = readTable(
-        """
-        SELECT DATE(bs.collected_at) AS date,
-               HOUR(bs.collected_at) AS hour_of_day,
-               CASE WHEN h.locdate IS NOT NULL THEN '공휴일'
-                    WHEN DAYOFWEEK(bs.collected_at) IN (1, 7) THEN '주말'
-                    ELSE '평일' END AS day_type,
-               COALESCE(h.date_name, '') AS holiday_name,
-               ROUND(
-                   COUNT(DISTINCT CASE WHEN bs.shared < 10 THEN bs.station_id END) * 100.0
-                   / NULLIF(COUNT(DISTINCT bs.station_id), 0), 1
-               ) AS depletion_rate,
-               COUNT(*) AS sample_count
-        FROM bike_status bs
-        LEFT JOIN holiday h
-            ON DATE_FORMAT(bs.collected_at, '%Y%m%d') = h.locdate AND h.is_holiday = 'Y'
-        WHERE bs.collected_at < DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00')
-        GROUP BY DATE(bs.collected_at), HOUR(bs.collected_at), day_type, holiday_name
-        """.trimIndent()
-    )
-
-    /** 대여소별 × day_type 고갈율 (전체 재계산, Geomap용) */
-    fun readStationHolidayDepletion(): List<Map<String, Any?>> = readTable(
-        """
-        SELECT bs.station_id, bs.station_name,
-               AVG(bs.station_latitude) AS station_latitude,
-               AVG(bs.station_longitude) AS station_longitude,
-               CASE WHEN h.locdate IS NOT NULL THEN '공휴일'
-                    WHEN DAYOFWEEK(bs.collected_at) IN (1, 7) THEN '주말'
-                    ELSE '평일' END AS day_type,
-               ROUND(
-                   COUNT(DISTINCT CASE WHEN bs.shared < 10
-                       THEN DATE_FORMAT(bs.collected_at, '%Y-%m-%d %H') END) * 100.0
-                   / NULLIF(COUNT(DISTINCT DATE_FORMAT(bs.collected_at, '%Y-%m-%d %H')), 0), 1
-               ) AS depletion_rate,
-               COUNT(DISTINCT DATE_FORMAT(bs.collected_at, '%Y-%m-%d %H')) AS sample_hours
-        FROM bike_status bs
-        LEFT JOIN holiday h
-            ON DATE_FORMAT(bs.collected_at, '%Y%m%d') = h.locdate AND h.is_holiday = 'Y'
-        WHERE bs.collected_at < DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00')
-        GROUP BY bs.station_id, bs.station_name, day_type
-        """.trimIndent()
     )
 
     private fun readTable(sql: String, vararg params: Any?): List<Map<String, Any?>> {
