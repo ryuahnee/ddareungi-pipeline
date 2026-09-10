@@ -26,21 +26,21 @@ class PostgresClient(
         }
     }
 
+    // 대여소
     suspend fun stationSnapshot()      = query("SELECT * FROM mart_station_snapshot")
-    suspend fun depletionAlert()       = query("SELECT * FROM mart_depletion_alert")
-    suspend fun congestionAlert()      = query("SELECT * FROM mart_congestion_alert")
-    suspend fun depletionWithWeather() = query("SELECT * FROM mart_depletion_with_weather")
-    suspend fun holidayDepletion()     = query("SELECT * FROM mart_station_holiday_depletion")
-    suspend fun morningRush()          = query("SELECT * FROM mart_morning_rush")
-    suspend fun eveningRush()          = query("SELECT * FROM mart_evening_rush")
-    suspend fun stationCluster()       = query("SELECT * FROM mart_station_cluster")
-    suspend fun weatherBikeStats()     = query("SELECT * FROM mart_weather_bike_stats")
-    suspend fun weatherDepletion()     = query("SELECT * FROM mart_weather_depletion")
-    suspend fun hourlyWeatherBike()    = query("SELECT * FROM mart_hourly_weather_bike")
-    suspend fun holidayBikeStats()     = query("SELECT * FROM mart_holiday_bike_stats")
-    suspend fun bikeMovement()         = query("SELECT * FROM mart_bike_movement")
-    suspend fun weatherThreshold()     = query("SELECT * FROM mart_weather_threshold")
-    suspend fun clusterProfile()       = query("SELECT * FROM mart_cluster_profile")
-    suspend fun useDailyAgg()          = query("SELECT * FROM mart_use_daily_agg")
-    suspend fun useMonthlyAgg()        = query("SELECT * FROM mart_use_monthly_agg")
+    suspend fun depletionAlert()       = query("SELECT * FROM mart_depletion_alert ORDER BY collected_at DESC LIMIT 5000")
+    suspend fun congestionAlert()      = query("SELECT * FROM mart_congestion_alert ORDER BY collected_at DESC LIMIT 5000")
+    suspend fun depletionWithWeather() = query("SELECT * FROM mart_depletion_with_weather ORDER BY collected_at DESC LIMIT 1000")
+    suspend fun stationVersionUsage()  = query("SELECT * FROM mart_station_version_usage ORDER BY rntls_id, valid_from")
+
+    // 날씨
+    suspend fun weatherDepletion()     = query("SELECT * FROM mart_weather_depletion ORDER BY collected_at DESC LIMIT 1000")
+
+    // 지하철
+    suspend fun subwayRushDepletion(hour: Int?) = query(
+        if (hour != null)
+            "SELECT * FROM mart_subway_rush_depletion WHERE hour_of_day = $hour ORDER BY depletion_rate DESC"
+        else
+            "SELECT * FROM mart_subway_rush_depletion ORDER BY hour_of_day, depletion_rate DESC"
+    )
 }

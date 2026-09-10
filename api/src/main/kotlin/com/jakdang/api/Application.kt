@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.jakdang.api.db.PostgresClient
 import com.jakdang.api.routes.stationRoutes
 import com.jakdang.api.routes.statsRoutes
-import com.jakdang.api.routes.useRoutes
+import com.jakdang.api.routes.subwayRoutes
 import io.ktor.serialization.jackson.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -26,6 +26,6 @@ fun main() {
         }
         stationRoutes(db)
         statsRoutes(db)
-        useRoutes(db)
+        subwayRoutes(db)
     }.start(wait = true)
 }

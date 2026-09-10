@@ -12,10 +12,7 @@ fun Application.stationRoutes(db: PostgresClient) {
             get("/depletion")         { call.respond(db.depletionAlert()) }
             get("/congestion")        { call.respond(db.congestionAlert()) }
             get("/depletion-weather") { call.respond(db.depletionWithWeather()) }
-            get("/holiday-depletion") { call.respond(db.holidayDepletion()) }
-            get("/morning-rush")      { call.respond(db.morningRush()) }
-            get("/evening-rush")      { call.respond(db.eveningRush()) }
-            get("/cluster")           { call.respond(db.stationCluster()) }
+            get("/version-usage")     { call.respond(db.stationVersionUsage()) }
         }
     }
 }

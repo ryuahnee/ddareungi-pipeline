@@ -117,6 +117,51 @@ holidayCollect
 
 ---
 
+## REST API
+
+PostgreSQL mart를 직접 조회하는 읽기 전용 API. `port 8090`.
+
+### 엔드포인트
+
+| 메서드 | 경로 | 설명 | mart 테이블 |
+|---|---|---|---|
+| GET | `/api/stations/snapshot` | 현재 전체 대여소 현황 | `mart_station_snapshot` |
+| GET | `/api/stations/depletion` | 현재 고갈 대여소 (shared < 10%) | `mart_depletion_alert` |
+| GET | `/api/stations/congestion` | 현재 혼잡 대여소 (shared > 90%) | `mart_congestion_alert` |
+| GET | `/api/stations/depletion-weather` | 현재 고갈 대여소 + 날씨 정보 | `mart_depletion_with_weather` |
+| GET | `/api/stations/version-usage` | 대여소 주소 이전 전후 거치율 비교 | `mart_station_version_usage` |
+| GET | `/api/stats/weather-depletion` | run_id별 날씨×고갈 카운트 | `mart_weather_depletion` |
+| GET | `/api/subway/rush` | 지하철역 반경 500m 내 시간대별 고갈율 | `mart_subway_rush_depletion` |
+
+### 쿼리 파라미터
+
+`GET /api/subway/rush?hour=8` — 특정 시간대(0~23) 필터. 생략 시 전체 시간대 반환.
+
+### 응답 예시
+
+```bash
+# 현재 고갈 대여소
+curl http://localhost:8090/api/stations/depletion
+
+# 출근시간(8시) 역 주변 고갈율
+curl "http://localhost:8090/api/subway/rush?hour=8"
+```
+
+```json
+[
+  {
+    "station_id": "ST-154",
+    "station_name": "338. 세운스퀘어 앞",
+    "parking_bike_tot_cnt": 0,
+    "shared": 0,
+    "collected_at": "2026-09-10T08:40:01.000+00:00",
+    "run_id": "scheduled__2026-09-10T08:30:00+00:00"
+  }
+]
+```
+
+---
+
 ## 실행
 
 ```bash
