@@ -141,13 +141,19 @@ class PostgresClient(url: String, user: String, password: String) {
                     rate_0900        DOUBLE PRECISION,
                     snapshots_0700   INTEGER,
                     snapshots_0900   INTEGER,
+                    is_weekday       BOOLEAN,
+                    is_holiday       BOOLEAN,
                     PRIMARY KEY (transition_date, station_id)
                 )
             """.trimIndent())
+            stmt.execute("ALTER TABLE mart_depletion_transition ADD COLUMN IF NOT EXISTS is_weekday BOOLEAN")
+            stmt.execute("ALTER TABLE mart_depletion_transition ADD COLUMN IF NOT EXISTS is_holiday BOOLEAN")
             stmt.execute("COMMENT ON TABLE mart_depletion_transition IS " +
-                "'부족 전환 대여소-일: 평일 07시대 평균 거치율>=10 & 09시대 평균 거치율<10 (거치율=shared, 두 시간대 모두 관측된 건만)'")
+                "'부족 전환 대여소-일: 07시대 평균 거치율>=10 & 09시대 평균 거치율<10 (거치율=shared, 두 시간대 모두 관측된 건만). 요일·공휴일은 제외 않고 플래그로 표시, 평일·비공휴일 분석은 is_weekday AND NOT is_holiday'")
             stmt.execute("COMMENT ON COLUMN mart_depletion_transition.rate_0700 IS '07시대 스냅샷 평균 거치율(%), >=10'")
             stmt.execute("COMMENT ON COLUMN mart_depletion_transition.rate_0900 IS '09시대 스냅샷 평균 거치율(%), <10'")
+            stmt.execute("COMMENT ON COLUMN mart_depletion_transition.is_weekday IS '월~금 여부(DAYOFWEEK 2~6)'")
+            stmt.execute("COMMENT ON COLUMN mart_depletion_transition.is_holiday IS '공휴일 여부(holiday.is_holiday=Y)'")
         }
         conn.prepareStatement("DELETE FROM mart_depletion_transition WHERE transition_date = ?::date").use {
             it.setString(1, date); it.executeUpdate()
@@ -156,7 +162,7 @@ class PostgresClient(url: String, user: String, password: String) {
             log.info("mart_depletion_transition {} 부족 전환 0건", date)
             return
         }
-        val sql = "INSERT INTO mart_depletion_transition VALUES (?::date,?,?,?,?,?,?)"
+        val sql = "INSERT INTO mart_depletion_transition VALUES (?::date,?,?,?,?,?,?,?,?)"
         conn.prepareStatement(sql).use { pstmt ->
             rows.forEach { row ->
                 pstmt.setString(1, date)
@@ -166,6 +172,8 @@ class PostgresClient(url: String, user: String, password: String) {
                 pstmt.setObject(5, row["rate_0900"])
                 pstmt.setObject(6, row["snapshots_0700"])
                 pstmt.setObject(7, row["snapshots_0900"])
+                pstmt.setBoolean(8, (row["is_weekday"] as Number).toInt() == 1)
+                pstmt.setBoolean(9, (row["is_holiday"] as Number).toInt() == 1)
                 pstmt.addBatch()
             }
             pstmt.executeBatch()
