@@ -10,6 +10,7 @@ import com.jakdang.batch.db.PostgresClient
 import com.jakdang.batch.job.AsosBackfillJob
 import com.jakdang.batch.job.BikeUseDailyBackfillJob
 import com.jakdang.batch.job.DdareungiRealtimeSyncJob
+import com.jakdang.batch.job.MartAlertBackfillJob
 import com.jakdang.batch.job.MartRealtimeSyncJob
 import com.jakdang.batch.job.MartReconciliationCheckJob
 import com.jakdang.batch.job.MartStationScdSyncJob
@@ -71,6 +72,28 @@ fun main(args: Array<String>){
                     System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
                 )
                 MartReconciliationCheckJob(mysql, postgres, runId).execute()
+                mysql.close()
+                postgres.close()
+            }
+            "martAlertBackfill" -> {
+                val mysql = MySqlClient(
+                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
+                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
+                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
+                )
+                val postgres = PostgresClient(
+                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
+                )
+                // --run-ids=a,b,c  또는  --from=yyyy-MM-dd --to=yyyy-MM-dd (원장에 존재하는 run만 대상)
+                val runIds = params["run-ids"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    ?: run {
+                        val from = params["from"] ?: error("--run-ids 또는 --from/--to 필수")
+                        val to = params["to"] ?: error("--from 지정 시 --to 필수")
+                        mysql.readRunIdsInRange(from, to)
+                    }
+                MartAlertBackfillJob(mysql, postgres, runIds).execute()
                 mysql.close()
                 postgres.close()
             }

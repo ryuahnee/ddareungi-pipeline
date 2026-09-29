@@ -282,6 +282,16 @@ class MySqlClient(url: String, user: String, password: String) {
         """.trimIndent(), runId, runId
     )
 
+    /** 기간 내 원장에 존재하는 run_id 목록 (collected_at 기준, mart 백필 대상 산정용) */
+    fun readRunIdsInRange(fromDate: String, toDate: String): List<String> = readTable(
+        """
+        SELECT DISTINCT run_id
+        FROM bike_status
+        WHERE collected_at >= ? AND collected_at < DATE_ADD(?, INTERVAL 1 DAY)
+        ORDER BY run_id
+        """.trimIndent(), fromDate, toDate
+    ).map { it["run_id"] as String }
+
     /** 고갈 경보: 거치율 10% 미만 */
     fun readMartDepletionAlert(runId: String): List<Map<String, Any?>> = readTable(
         """
