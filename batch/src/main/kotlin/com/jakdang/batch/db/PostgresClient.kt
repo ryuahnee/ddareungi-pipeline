@@ -151,6 +151,14 @@ class PostgresClient(url: String, user: String, password: String) {
         log.info("mart_station_snapshot 동기화 완료 {}건", rows.size)
     }
 
+    /** 특정 run_id의 경보 mart 적재 건수 (원천-mart 대조용) */
+    fun countMartAlert(table: String, runId: String): Int {
+        conn.prepareStatement("SELECT COUNT(*) FROM $table WHERE run_id = ?").use { pstmt ->
+            pstmt.setString(1, runId)
+            pstmt.executeQuery().use { rs -> rs.next(); return rs.getInt(1) }
+        }
+    }
+
     fun syncMartAlert(table: String, rows: List<Map<String, Any?>>) {
         conn.createStatement().execute("DELETE FROM $table WHERE run_id = '${rows.firstOrNull()?.get("run_id")}'")
         val sql = "INSERT INTO $table VALUES (?,?,?,?,?,?)"

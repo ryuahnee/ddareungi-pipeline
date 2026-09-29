@@ -11,6 +11,7 @@ import com.jakdang.batch.job.AsosBackfillJob
 import com.jakdang.batch.job.BikeUseDailyBackfillJob
 import com.jakdang.batch.job.DdareungiRealtimeSyncJob
 import com.jakdang.batch.job.MartRealtimeSyncJob
+import com.jakdang.batch.job.MartReconciliationCheckJob
 import com.jakdang.batch.job.MartStationScdSyncJob
 import com.jakdang.batch.job.MartSubwayRushDepletionJob
 import com.jakdang.batch.job.StationMasterSyncJob
@@ -55,6 +56,21 @@ fun main(args: Array<String>){
                     System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
                 )
                 MartRealtimeSyncJob(mysql, postgres, runId).execute()
+                mysql.close()
+                postgres.close()
+            }
+            "martReconciliationCheck" -> {
+                val mysql = MySqlClient(
+                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
+                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
+                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
+                )
+                val postgres = PostgresClient(
+                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
+                )
+                MartReconciliationCheckJob(mysql, postgres, runId).execute()
                 mysql.close()
                 postgres.close()
             }

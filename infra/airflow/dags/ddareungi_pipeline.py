@@ -32,4 +32,9 @@ with DAG(
         bash_command=f"java -jar {JAR} --job=martRealtimeSync --run-id={{{{ run_id }}}}",
     )
 
-    collect >> mart_realtime
+    reconciliation_check = BashOperator(
+        task_id="martReconciliationCheck",
+        bash_command=f"java -jar {JAR} --job=martReconciliationCheck --run-id={{{{ run_id }}}}",
+    )
+
+    collect >> mart_realtime >> reconciliation_check
