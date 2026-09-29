@@ -9,7 +9,7 @@
 
 ```
 외부 API
-  ├── 따릉이 실시간    (매 10분)
+  ├── 따릉이 실시간    (10분 주기 설계*)
   ├── 기상청 ASOS     (매시)
   ├── 공휴일          (매월)
   └── 지하철역 마스터  (매일)
@@ -19,7 +19,7 @@
          │
          ▼
   MySQL (NAS)          ← 원장 (raw data)
-  ├── bike_status           실시간 대여소 스냅샷  (10분 단위)
+  ├── bike_status           실시간 대여소 스냅샷  (10분 주기 설계*, 결측 있음)
   ├── weather_asos          기상청 ASOS 시간 관측
   ├── holiday               공휴일 (한국천문연구원)
   ├── bike_station          대여소 마스터 (SCD Type 2)
@@ -35,7 +35,8 @@
   ├── mart_weather_depletion     날씨별 고갈 카운트 (run_id별)
   ├── mart_depletion_with_weather  고갈 대여소 + 날씨 조인
   ├── mart_station_version_usage   SCD 버전별 평균 거치율
-  └── mart_subway_rush_depletion   역 반경 내 시간대별 고갈율
+  ├── mart_subway_rush_depletion   역 반경 내 시간대별 고갈율
+  └── mart_depletion_transition    부족 전환 대여소-일 (07시대→09시대)
          │
          ├── Grafana (port 3000)   시각화 대시보드
          └── Ktor REST API (port 8090)   17개 엔드포인트
@@ -47,9 +48,9 @@
 
 ### ddareungi_pipeline `*/10 * * * *`
 ```
-ddareungiRealtimeSync  →  martRealtimeSync
-     따릉이 수집               snapshot / depletion_alert /
-  → MySQL bike_status          congestion_alert /
+ddareungiRealtimeSync  →  martRealtimeSync            →  martReconciliationCheck
+     따릉이 수집               snapshot / depletion_alert /      원천-mart 고갈 건수 대조
+  → MySQL bike_status          congestion_alert /                불일치 시 태스크 실패
                                weather_depletion /
                                depletion_with_weather → PostgreSQL
 ```
@@ -100,6 +101,24 @@ holidayCollect
 - IOPS 제한 (~200–1000 rows/sec) → 대량 작업은 daily chunk 단위 처리
 - 장기 집계 쿼리 연결 끊김 → `socketTimeout=0` 설정
 - 집계 부하 큰 mart(subway)는 매시간 대신 매일 04:00 별도 파이프라인으로 분리
+
+**\* 수집 주기와 결측**
+- 10분 주기로 **설계**했으나, Airflow가 로컬 Mac의 Docker Desktop에서 구동됨
+- Mac 종료·절전 시 스케줄러가 함께 중단되어 수집 공백 발생 (예: 2026-07-16~08-24 등)
+- `bike_status`는 10분 단위 실시간 스냅샷이라 지난 시각을 소급 수집할 수 없음 → 공백 구간은 **영구 결측**
+- 결측은 보간하지 않음. 시간대 비교 지표는 두 시간대가 모두 관측된 대여소-일만 사용
+
+**원천-mart 대조 체크** (`martReconciliationCheck`)
+- 매 run마다 원천 `bike_status`의 고갈 건수와 `mart_depletion_alert` 건수를 비교
+- 불일치 시 태스크를 실패시켜 mart 누락·계산 차이를 즉시 드러냄
+- 고갈 정의(shared<10, run별 최신 collected_at)는 `readMartDepletionAlert` 한 곳에서만 정의
+- 과거 누락 run은 `martAlertBackfill`(run별 DELETE 후 INSERT, 멱등)로 복구
+
+**부족 전환 지표** (`mart_depletion_transition`)
+- 평일 07시대 평균 거치율 ≥10% → 09시대 평균 <10% 로 떨어진 대여소-일
+- 시간대 대표값은 해당 시간대 스냅샷의 평균 거치율
+- 두 시간대가 모두 관측된 대여소-일만 집계 (결측일 미보간)
+- 지표 정의는 `readDepletionTransition` 한 곳 + 테이블/컬럼 주석에 명시
 
 ---
 

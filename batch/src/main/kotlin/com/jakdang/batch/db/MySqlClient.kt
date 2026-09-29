@@ -282,6 +282,42 @@ class MySqlClient(url: String, user: String, password: String) {
         """.trimIndent(), runId, runId
     )
 
+    /**
+     * 부족 전환 지표 (지표 정의 단일 출처).
+     * 하루에 대해, 07시대 스냅샷 평균 거치율(shared)>=10 이고 09시대 평균<10 인 대여소.
+     * 두 시간대 모두 관측된 대여소만(평균이 NULL이면 비교 결과 false → 자연 제외).
+     * 요일·공휴일로 제외하지 않고 is_weekday(월~금)·is_holiday(holiday 테이블, is_holiday='Y')로 표시만 한다.
+     * 평일·비공휴일 분석은 조회 시 is_weekday AND NOT is_holiday 로 필터. date: yyyy-MM-dd.
+     */
+    fun readDepletionTransition(date: String): List<Map<String, Any?>> = readTable(
+        """
+        SELECT station_id, station_name,
+               ROUND(AVG(CASE WHEN HOUR(collected_at) = 7 THEN shared END), 2) AS rate_0700,
+               ROUND(AVG(CASE WHEN HOUR(collected_at) = 9 THEN shared END), 2) AS rate_0900,
+               SUM(HOUR(collected_at) = 7) AS snapshots_0700,
+               SUM(HOUR(collected_at) = 9) AS snapshots_0900,
+               (DAYOFWEEK(?) BETWEEN 2 AND 6) AS is_weekday,
+               EXISTS (SELECT 1 FROM holiday h
+                       WHERE h.locdate = DATE_FORMAT(?, '%Y%m%d') AND h.is_holiday = 'Y') AS is_holiday
+        FROM bike_status
+        WHERE DATE(collected_at) = ?
+          AND HOUR(collected_at) IN (7, 9)
+        GROUP BY station_id, station_name
+        HAVING AVG(CASE WHEN HOUR(collected_at) = 7 THEN shared END) >= 10
+           AND AVG(CASE WHEN HOUR(collected_at) = 9 THEN shared END) < 10
+        """.trimIndent(), date, date, date
+    )
+
+    /** 기간 내 원장에 존재하는 run_id 목록 (collected_at 기준, mart 백필 대상 산정용) */
+    fun readRunIdsInRange(fromDate: String, toDate: String): List<String> = readTable(
+        """
+        SELECT DISTINCT run_id
+        FROM bike_status
+        WHERE collected_at >= ? AND collected_at < DATE_ADD(?, INTERVAL 1 DAY)
+        ORDER BY run_id
+        """.trimIndent(), fromDate, toDate
+    ).map { it["run_id"] as String }
+
     /** 고갈 경보: 거치율 10% 미만 */
     fun readMartDepletionAlert(runId: String): List<Map<String, Any?>> = readTable(
         """
