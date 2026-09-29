@@ -302,11 +302,12 @@ class MySqlClient(url: String, user: String, password: String) {
                EXISTS (SELECT 1 FROM holiday h
                        WHERE h.locdate = DATE_FORMAT(?, '%Y%m%d') AND h.is_holiday = 'Y') AS is_holiday
         FROM bike_status
-        WHERE DATE(collected_at) = ?
+        -- collected_at 범위로 파티션 프루닝 유도. FORCE INDEX는 두지 않음: 계획은 옵티마이저에 위임(데이터 분포가 바뀌면 최적 계획도 달라짐)
+        WHERE collected_at >= ? AND collected_at < DATE_ADD(?, INTERVAL 1 DAY)
           AND HOUR(collected_at) IN (7, 9)
         GROUP BY station_id, station_name
         HAVING snapshots_0700 > 0 AND snapshots_0900 > 0
-        """.trimIndent(), date, date, date
+        """.trimIndent(), date, date, date, date
     )
 
     /** 기간 내 원장에 존재하는 run_id 목록 (collected_at 기준, mart 백필 대상 산정용) */
