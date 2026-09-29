@@ -284,8 +284,8 @@ class MySqlClient(url: String, user: String, password: String) {
 
     /**
      * 부족 전환 지표 (지표 정의 단일 출처).
-     * 하루에 대해, 07시대 스냅샷 평균 거치율(shared)>=10 이고 09시대 평균<10 인 대여소.
-     * 두 시간대 모두 관측된 대여소만(평균이 NULL이면 비교 결과 false → 자연 제외).
+     * 하루에 대해 07·09시대를 모두 관측한 대여소-일을 전부 저장(비율의 분모 = 짝 관측일).
+     * is_transition = 07시대 평균 거치율(shared)>=10 AND 09시대 평균<10 (반올림 전 원본 평균 기준).
      * 요일·공휴일로 제외하지 않고 is_weekday(월~금)·is_holiday(holiday 테이블, is_holiday='Y')로 표시만 한다.
      * 평일·비공휴일 분석은 조회 시 is_weekday AND NOT is_holiday 로 필터. date: yyyy-MM-dd.
      */
@@ -296,6 +296,8 @@ class MySqlClient(url: String, user: String, password: String) {
                ROUND(AVG(CASE WHEN HOUR(collected_at) = 9 THEN shared END), 2) AS rate_0900,
                SUM(HOUR(collected_at) = 7) AS snapshots_0700,
                SUM(HOUR(collected_at) = 9) AS snapshots_0900,
+               (AVG(CASE WHEN HOUR(collected_at) = 7 THEN shared END) >= 10
+                AND AVG(CASE WHEN HOUR(collected_at) = 9 THEN shared END) < 10) AS is_transition,
                (DAYOFWEEK(?) BETWEEN 2 AND 6) AS is_weekday,
                EXISTS (SELECT 1 FROM holiday h
                        WHERE h.locdate = DATE_FORMAT(?, '%Y%m%d') AND h.is_holiday = 'Y') AS is_holiday
@@ -303,8 +305,7 @@ class MySqlClient(url: String, user: String, password: String) {
         WHERE DATE(collected_at) = ?
           AND HOUR(collected_at) IN (7, 9)
         GROUP BY station_id, station_name
-        HAVING AVG(CASE WHEN HOUR(collected_at) = 7 THEN shared END) >= 10
-           AND AVG(CASE WHEN HOUR(collected_at) = 9 THEN shared END) < 10
+        HAVING snapshots_0700 > 0 AND snapshots_0900 > 0
         """.trimIndent(), date, date, date
     )
 
