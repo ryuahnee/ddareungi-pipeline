@@ -11,6 +11,7 @@ import com.jakdang.batch.job.AsosBackfillJob
 import com.jakdang.batch.job.BikeUseDailyBackfillJob
 import com.jakdang.batch.job.DdareungiRealtimeSyncJob
 import com.jakdang.batch.job.MartAlertBackfillJob
+import com.jakdang.batch.job.MartDepletionTransitionJob
 import com.jakdang.batch.job.MartRealtimeSyncJob
 import com.jakdang.batch.job.MartReconciliationCheckJob
 import com.jakdang.batch.job.MartStationScdSyncJob
@@ -94,6 +95,35 @@ fun main(args: Array<String>){
                         mysql.readRunIdsInRange(from, to)
                     }
                 MartAlertBackfillJob(mysql, postgres, runIds).execute()
+                mysql.close()
+                postgres.close()
+            }
+            "martDepletionTransition" -> {
+                val mysql = MySqlClient(
+                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
+                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
+                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
+                )
+                val postgres = PostgresClient(
+                    System.getenv("GRAFANA_DB_URL")      ?: error("GRAFANA_DB_URL 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_USER")     ?: error("GRAFANA_DB_USER 환경변수 필수"),
+                    System.getenv("GRAFANA_DB_PASSWORD") ?: error("GRAFANA_DB_PASSWORD 환경변수 필수")
+                )
+                val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                val from = params["from"]
+                val to = params["to"]
+                if (from != null && to != null) {
+                    var d = java.time.LocalDate.parse(from, fmt)
+                    val end = java.time.LocalDate.parse(to, fmt)
+                    require(!d.isAfter(end)) { "--from 이 --to 보다 이후일 수 없음" }
+                    while (!d.isAfter(end)) {
+                        MartDepletionTransitionJob(mysql, postgres, d.format(fmt)).execute()
+                        d = d.plusDays(1)
+                    }
+                } else {
+                    val date = params["date"] ?: error("--date 또는 --from/--to 필수")
+                    MartDepletionTransitionJob(mysql, postgres, date).execute()
+                }
                 mysql.close()
                 postgres.close()
             }

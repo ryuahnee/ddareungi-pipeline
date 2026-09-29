@@ -282,6 +282,29 @@ class MySqlClient(url: String, user: String, password: String) {
         """.trimIndent(), runId, runId
     )
 
+    /**
+     * 부족 전환 지표 (지표 정의 단일 출처).
+     * 평일(월~금) 하루에 대해, 07시대 스냅샷 평균 거치율(shared)>=10 이고 09시대 평균<10 인 대여소.
+     * 두 시간대 모두 관측된 대여소만(평균이 NULL이면 비교 결과 false → 자연 제외).
+     * date: yyyy-MM-dd. 주말이면 DAYOFWEEK 조건으로 빈 결과.
+     */
+    fun readDepletionTransition(date: String): List<Map<String, Any?>> = readTable(
+        """
+        SELECT station_id, station_name,
+               ROUND(AVG(CASE WHEN HOUR(collected_at) = 7 THEN shared END), 2) AS rate_0700,
+               ROUND(AVG(CASE WHEN HOUR(collected_at) = 9 THEN shared END), 2) AS rate_0900,
+               SUM(HOUR(collected_at) = 7) AS snapshots_0700,
+               SUM(HOUR(collected_at) = 9) AS snapshots_0900
+        FROM bike_status
+        WHERE DATE(collected_at) = ?
+          AND HOUR(collected_at) IN (7, 9)
+          AND DAYOFWEEK(collected_at) BETWEEN 2 AND 6
+        GROUP BY station_id, station_name
+        HAVING AVG(CASE WHEN HOUR(collected_at) = 7 THEN shared END) >= 10
+           AND AVG(CASE WHEN HOUR(collected_at) = 9 THEN shared END) < 10
+        """.trimIndent(), date
+    )
+
     /** 기간 내 원장에 존재하는 run_id 목록 (collected_at 기준, mart 백필 대상 산정용) */
     fun readRunIdsInRange(fromDate: String, toDate: String): List<String> = readTable(
         """
