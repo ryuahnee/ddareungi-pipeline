@@ -29,10 +29,3 @@ with DAG(
             " --month={{ (data_interval_end + macros.dateutil.relativedelta.relativedelta(months=1)).strftime('%m') }}"
         ),
     )
-
-    mart_holiday_bike_stats = BashOperator(
-        task_id="martHolidayBikeStats",
-        bash_command=f"java -jar {JAR} --job=martHolidayBikeStats --run-id={{{{ run_id }}}}",
-    )
-
-    holiday_collect >> mart_holiday_bike_stats

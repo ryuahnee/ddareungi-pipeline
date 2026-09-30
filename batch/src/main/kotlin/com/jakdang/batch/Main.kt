@@ -3,6 +3,7 @@ package com.jakdang.batch
 import com.jakdang.batch.client.AsosClient
 import com.jakdang.batch.client.BikeUseDailyClient
 import com.jakdang.batch.client.DdareungiClient
+import com.jakdang.batch.client.HolidayClient
 import com.jakdang.batch.client.StationMasterClient
 import com.jakdang.batch.client.SubwayClient
 import com.jakdang.batch.db.MySqlClient
@@ -10,6 +11,7 @@ import com.jakdang.batch.db.PostgresClient
 import com.jakdang.batch.job.AsosBackfillJob
 import com.jakdang.batch.job.BikeUseDailyBackfillJob
 import com.jakdang.batch.job.DdareungiRealtimeSyncJob
+import com.jakdang.batch.job.HolidayCollectJob
 import com.jakdang.batch.job.MartAlertBackfillJob
 import com.jakdang.batch.job.MartDepletionTransitionJob
 import com.jakdang.batch.job.MartRealtimeSyncJob
@@ -211,6 +213,21 @@ fun main(args: Array<String>){
                     val date = params["date"] ?: java.time.LocalDate.now().format(fmt)
                     AsosBackfillJob(client, mysql, runId, date, stn).execute()
                 }
+                client.close()
+                mysql.close()
+            }
+            "holidayCollect" -> {
+                val client = HolidayClient(
+                    System.getenv("HOLIDAY_API_KEY") ?: error("HOLIDAY_API_KEY 환경변수 필수")
+                )
+                val mysql = MySqlClient(
+                    System.getenv("MYSQL_URL")      ?: error("MYSQL_URL 환경변수 필수"),
+                    System.getenv("MYSQL_USER")     ?: error("MYSQL_USER 환경변수 필수"),
+                    System.getenv("MYSQL_PASSWORD") ?: error("MYSQL_PASSWORD 환경변수 필수")
+                )
+                val year = params["year"] ?: error("--year 필수")
+                val month = params["month"] ?: error("--month 필수")
+                HolidayCollectJob(client, mysql, runId, year, month).execute()
                 client.close()
                 mysql.close()
             }

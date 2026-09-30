@@ -3,6 +3,7 @@ package com.jakdang.batch.db
 import com.jakdang.batch.model.AsosObservation
 import com.jakdang.batch.model.BikeStationRow
 import com.jakdang.batch.model.BikeUseDayRow
+import com.jakdang.batch.model.HolidayItem
 import com.jakdang.batch.model.StationMasterRow
 import com.jakdang.batch.model.SubwayStation
 import org.slf4j.LoggerFactory
@@ -87,6 +88,37 @@ class MySqlClient(url: String, user: String, password: String) {
         }
         log.info("weather_asos 적재 완료 {}건 (run_id={})", rows.size, runId)
         return rows.size
+    }
+
+    /** 공휴일 적재. 멱등: 같은 (locdate, seq) 재수집 시 UPDATE */
+    fun insertHoliday(items: List<HolidayItem>, collectedAt: String, runId: String): Int {
+        if (items.isEmpty()) return 0
+        val sql = """
+            INSERT INTO holiday
+                (locdate, date_name, is_holiday, date_kind, seq, collected_at, run_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                date_name    = VALUES(date_name),
+                is_holiday   = VALUES(is_holiday),
+                date_kind    = VALUES(date_kind),
+                collected_at = VALUES(collected_at),
+                run_id       = VALUES(run_id)
+        """.trimIndent()
+        conn.prepareStatement(sql).use { pstmt ->
+            items.forEach { h ->
+                pstmt.setString(1, h.locdate.toString())
+                pstmt.setString(2, h.dateName)
+                pstmt.setString(3, h.isHoliday)
+                pstmt.setString(4, h.dateKind)
+                pstmt.setInt(5, h.seq)
+                pstmt.setString(6, collectedAt)
+                pstmt.setString(7, runId)
+                pstmt.addBatch()
+            }
+            pstmt.executeBatch()
+        }
+        log.info("holiday 적재 완료 {}건 (run_id={})", items.size, runId)
+        return items.size
     }
 
     /** 실시간 거치현황 적재. 멱등: 같은 (collected_at, station_id) 재실행 시 UPDATE */
