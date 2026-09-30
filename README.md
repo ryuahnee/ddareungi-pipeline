@@ -110,15 +110,20 @@ holidayCollect
 
 **원천-mart 대조 체크** (`martReconciliationCheck`)
 - 매 run마다 원천 `bike_status`의 고갈 건수와 `mart_depletion_alert` 건수를 비교
-- 불일치 시 태스크를 실패시켜 mart 누락·계산 차이를 즉시 드러냄
-- 고갈 정의(shared<10, run별 최신 collected_at)는 `readMartDepletionAlert` 한 곳에서만 정의
+- 불일치 시 태스크를 실패시켜 mart 적재 누락을 즉시 드러냄
+- 대조 체크는 적재와 같은 함수(`readMartDepletionAlert`)를 쓰므로 고갈 정의(shared<10, run별 최신 collected_at)가 한 곳에 고정됨 (계산 차이는 대상 아님, 적재 누락만 검출)
 - 과거 누락 run은 `martAlertBackfill`(run별 DELETE 후 INSERT, 멱등)로 복구
 
 **부족 전환 지표** (`mart_depletion_transition`)
-- 평일 07시대 평균 거치율 ≥10% → 09시대 평균 <10% 로 떨어진 대여소-일
-- 시간대 대표값은 해당 시간대 스냅샷의 평균 거치율
-- 두 시간대가 모두 관측된 대여소-일만 집계 (결측일 미보간)
-- 지표 정의는 `readDepletionTransition` 한 곳 + 테이블/컬럼 주석에 명시
+- **Grain**: 대여소 × 날짜 (07시대·09시대가 모두 관측된 경우만 적재)
+- **Key**: (transition_date, station_id)
+- **주요 컬럼**
+  - `rate_0700`, `rate_0900`: 시간대 스냅샷 평균 거치율 (표시용, 소수 2자리)
+  - `is_transition`: 07시대 평균 ≥10% AND 09시대 평균 <10% (원본 평균으로 판정)
+  - `is_weekday`, `is_holiday`: 제외하지 않고 표시만, 조회 시 필터
+- **적재**: 일별 DAG(`depletion_transition_pipeline`, 01:00 KST), 논리적 실행일 기준 날짜 단위 DELETE 후 INSERT (멱등)
+- **정의 위치**: `readDepletionTransition` 한 곳
+- **비율 계산**: `SUM(is_transition) / COUNT(*)` 로 mart 하나에서 분자·분모 계산
 
 ---
 
