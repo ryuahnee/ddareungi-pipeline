@@ -115,54 +115,32 @@ martDepletionTransition
 - 집계 부하 큰 mart(subway)는 매시간 대신 매일 04:00 별도 파이프라인으로 분리
 
 **\* 수집 주기와 결측**
-- 10분 주기로 **설계**했으나, Airflow가 로컬 Mac의 Docker Desktop에서 구동됨
-- Mac 종료·절전 시 스케줄러가 함께 중단되어 수집 공백 발생 (예: 2026-07-16~08-24 등)
-- `bike_status`는 10분 단위 실시간 스냅샷이라 지난 시각을 소급 수집할 수 없음 → 공백 구간은 **영구 결측**
-- 결측은 보간하지 않음. 시간대 비교 지표는 두 시간대가 모두 관측된 대여소-일만 사용
+- 로컬 스케줄러 중단 구간은 소급 수집 불가 → **영구 결측**
+- 결측은 보간하지 않음
+- 시간대 비교 지표는 두 시간대가 모두 관측된 날만 사용
 
 **원천-mart 대조 체크** (`martReconciliationCheck`)
-- 매 run마다 원천 `bike_status`의 고갈 건수와 `mart_depletion_alert` 건수를 비교
-- 불일치 시 태스크를 실패시켜 mart 적재 누락을 즉시 드러냄
-- 대조 체크는 적재와 같은 함수(`readMartDepletionAlert`)를 쓰므로 고갈 정의(shared<10, run별 최신 collected_at)가 한 곳에 고정됨 (계산 차이는 대상 아님, 적재 누락만 검출)
-- 과거 누락 run은 `martAlertBackfill`(run별 DELETE 후 INSERT, 멱등)로 복구
+- 매 run 원천 `bike_status`와 `mart_depletion_alert`의 고갈 건수를 비교
+- 불일치 시 태스크를 실패시켜 적재 누락을 검출
 
 **부족 전환 지표** (`mart_depletion_transition`)
-- **Grain**: 대여소 × 날짜 (07시대·09시대가 모두 관측된 경우만 적재)
+- **Grain**: 대여소 × 날짜 (07·09시대가 모두 관측된 경우만 적재)
 - **Key**: (transition_date, station_id)
-- **주요 컬럼**
-  - `rate_0700`, `rate_0900`: 시간대 스냅샷 평균 거치율 (표시용, 소수 2자리)
-  - `is_transition`: 07시대 평균 ≥10% AND 09시대 평균 <10% (원본 평균으로 판정)
-  - `is_weekday`, `is_holiday`: 제외하지 않고 표시만, 조회 시 필터
-- **적재**: 일별 DAG(`depletion_transition_pipeline`, 01:00 KST), 논리적 실행일 기준 날짜 단위 DELETE 후 INSERT (멱등)
-- **정의 위치**: `readDepletionTransition` 한 곳
-- **비율 계산**: `SUM(is_transition) / COUNT(*)` 로 mart 하나에서 분자·분모 계산
+- **is_transition**: 07시대 평균 거치율 ≥10% AND 09시대 평균 <10%
 
 ---
 
 ## 트러블슈팅
 
-**1. mart 적재 누락 → 대조 체크 + 백필**
-- 증상: Grafana 고갈 빈도가 원천 `bike_status` 직접 계산과 다름(회현역 mart 912 vs 원천 ~1,500).
-- 원인: DuckDB→MySQL 전환 시기 등 일부 run의 mart 적재 태스크가 실패해 `mart_depletion_alert`에 누락. 계산 로직은 동일(공통 run은 원천=mart 일치).
-- 조치: `martReconciliationCheck`로 매 run 원천-mart 건수를 비교해 재발을 즉시 검출, 과거 누락은 `martAlertBackfill`(run 단위 DELETE 후 INSERT, 멱등)로 복구.
+**1. mart 적재 누락**
+- 증상: Grafana 고갈 빈도가 원천 `bike_status` 직접 계산과 다름
+- 조치: 공통 run 비교로 로직 차이가 아닌 적재 누락임을 확인 → 누락 run 백필 + 대조 체크 추가
+- 결과: 전체 run 원천=mart 일치
 
-**2. 비율의 분모 부재 → 짝 관측일 전체 저장**
-- 증상: 부족 전환 mart에 전환된 대여소-일만 있어 "전환일수 / 짝 관측일수" 비율의 분모를 mart로 계산 불가.
-- 조치: 07·09시대를 모두 관측한 대여소-일을 전부 저장하고 `is_transition` 플래그로 전환 여부 표시 → `SUM(is_transition)/COUNT(*)`로 mart 하나에서 분자·분모 계산.
-
-**3. Airflow 재처리 시 날짜 어긋남 → 논리적 실행일 사용**
-- 증상: 일별 DAG가 `date -d yesterday`(실행 시점 기준)로 날짜를 잡아, 과거 run을 재실행하면 엉뚱한 날짜가 적재됨.
-- 조치: `data_interval_start.in_timezone("Asia/Seoul")`로 논리적 실행일 기준 날짜를 계산 → 언제 재실행해도 해당 run의 날짜만 재적재.
-
-**4. 원장 조회 풀스캔 → 파티션 프루닝**
-- 증상: `WHERE DATE(collected_at)=?`가 컬럼에 함수를 씌워 월별 파티션 프루닝·인덱스를 막고 전체(8개 파티션, 550만 행) 풀스캔.
-- 조치: `collected_at >= ? AND < DATE_ADD(?,1 DAY)` 범위 조건으로 변경 → 파티션 프루닝(8→1개), 실행시간 4.7s→1.4s(결과 동일). 인덱스 선택은 통계(ANALYZE) 검증 후 옵티마이저에 위임.
-
-**5. 공휴일 미갱신 → 수집 job 복구**
-- 증상: `holiday_pipeline`이 참조하는 `holidayCollect`가 코드에 구현되지 않아 실패 → 신규 공휴일이 `holiday`에 쌓이지 않아 `is_holiday`가 갱신되지 않음.
-- 조치: `HolidayCollectJob`(한국천문연구원 API, `(locdate, seq)` 멱등 upsert)을 복구하고, 분석 mart 제거 때 함께 빠졌어야 할 `martHolidayBikeStats` 태스크를 DAG에서 제거.
-
-**참고**: 원장에 원천이 없는 mart 데이터(전환 이전 Postgres 직접 적재분, 2026-06-06~06-24)는 원천-mart 대조가 불가능해 별도 정리했다.
+**2. 조회 성능**
+- 증상: `WHERE DATE(collected_at)=?`가 컬럼에 함수를 씌워 파티션 프루닝을 막고 풀스캔
+- 조치: `collected_at >= ? AND < DATE_ADD(?,1 DAY)` 범위 조건으로 변경
+- 결과: 4.7초 → 1.4초 (결과 동일)
 
 ---
 
