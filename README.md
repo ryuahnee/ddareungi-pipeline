@@ -233,5 +233,6 @@ ddareungi-pipeline/
 ├── api/             Ktor REST API (port 8090)
 └── infra/
     ├── airflow/dags/  DAG 정의 (6개)
-    └── docker/        docker-compose, Dockerfile
+    ├── docker/        docker-compose, Dockerfile
+    └── sql/           운영 SQL (고아 mart run 정리)
 ```
