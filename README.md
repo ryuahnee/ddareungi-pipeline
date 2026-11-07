@@ -234,7 +234,6 @@ GRAFANA_DB_PASSWORD=grafana \
 ./gradlew :nlsql:run --args='--ask "지금 고갈된 대여소 몇 개야?"'
 ```
 
-
 ### Text-to-SQL 평가·로그
 
 질문별 생성 SQL·검증·실행 지표는 `nl_query_log`에 기록한다. `infra/sql/create_nl_query_log.sql`을 grafana 계정으로 먼저 실행하며, 결과 행과 chat id는 기록하지 않는다.
