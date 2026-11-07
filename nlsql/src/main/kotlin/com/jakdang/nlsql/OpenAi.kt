@@ -13,6 +13,8 @@ import java.time.ZoneId
 val json = jacksonObjectMapper()
 val http: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
 
+class ApiFailure(val status: Int) : RuntimeException()
+
 fun postJson(url: String, body: Any, timeout: Long, bearer: String? = null, requireHttpSuccess: Boolean = true): JsonNode {
     val builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(timeout))
         .header("Content-Type", "application/json")
@@ -20,11 +22,11 @@ fun postJson(url: String, body: Any, timeout: Long, bearer: String? = null, requ
     if (bearer != null) builder.header("Authorization", "Bearer $bearer")
     val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     // Never propagate remote bodies, URLs or exception messages to logs/replies.
-    check(!requireHttpSuccess || response.statusCode() in 200..299) { "외부 API 호출 실패" }
+    if (requireHttpSuccess && response.statusCode() !in 200..299) throw ApiFailure(response.statusCode())
     return json.readTree(response.body())
 }
 
-data class GeneratedSql(val sql: String, val explanation: String)
+data class GeneratedSql(val sql: String, val explanation: String, val promptTokens: Int? = null, val completionTokens: Int? = null)
 
 fun generateSql(question: String, schema: Map<String, List<Pair<String, String>>>, key: String, model: String): GeneratedSql {
     val glossary = checkNotNull(object {}.javaClass.getResource("/glossary.md")).readText()
@@ -57,5 +59,6 @@ fun generateSql(question: String, schema: Map<String, List<Pair<String, String>>
     check(choice.path("finish_reason").asText() == "stop")
     val parsed = json.readTree(choice.path("message").path("content").asText())
     check(parsed.path("sql").isTextual && parsed.path("explanation").isTextual)
-    return GeneratedSql(parsed.path("sql").asText(), parsed.path("explanation").asText().lineSequence().first())
+    return GeneratedSql(parsed.path("sql").asText(), parsed.path("explanation").asText().lineSequence().first(),
+        result.path("usage").get("prompt_tokens")?.asInt(), result.path("usage").get("completion_tokens")?.asInt())
 }
