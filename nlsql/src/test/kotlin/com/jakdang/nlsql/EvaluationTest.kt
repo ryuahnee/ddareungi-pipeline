@@ -45,4 +45,28 @@ class EvaluationTest {
         cases.forEach { assertNull(validateSql(it.expected_sql).reason, it.id) }
     }
 
+    @Test fun `보조 컬럼은 strict 실패 relaxed 통과하지만 다른 값은 모두 실패한다`() {
+        val expected = result("1.234", "2.345").copy(numericColumns = setOf(0))
+        val actual = QueryResult(listOf("extra", "renamed"), listOf(listOf("a", "2.35"), listOf("b", "1.23")),
+            false, emptyMap(), numericColumns = setOf(1))
+        assertFalse(resultsMatch(expected, actual, false))
+        assertTrue(resultsMatch(expected, actual, false, relaxed = true))
+        assertFalse(resultsMatch(expected, actual, true, relaxed = true))
+        val wrong = actual.copy(rows = listOf(listOf("a", "2.36"), listOf("b", "1.23")))
+        assertFalse(resultsMatch(expected, wrong, false))
+        assertFalse(resultsMatch(expected, wrong, false, relaxed = true))
+        assertFalse(resultsMatch(expected, actual.copy(truncated = true), false, relaxed = true))
+    }
+
+    @Test fun `relaxed는 서로 다른 컬럼을 대응시키고 행 관계를 보존한다`() {
+        val expected = QueryResult(listOf("x", "y"), listOf(listOf("a", "1"), listOf("b", "2")), false, emptyMap())
+        val reordered = expected.copy(columns = listOf("y", "extra", "x"),
+            rows = listOf(listOf("1", "extra", "a"), listOf("2", "extra", "b")))
+        assertTrue(resultsMatch(expected, reordered, true, relaxed = true))
+        val scrambled = expected.copy(rows = listOf(listOf("a", "2"), listOf("b", "1")))
+        assertFalse(resultsMatch(expected, scrambled, false, relaxed = true))
+        val repeated = QueryResult(listOf("x", "y"), listOf(listOf("a", "a")), false, emptyMap())
+        assertFalse(resultsMatch(repeated, QueryResult(listOf("one", "extra"), listOf(listOf("a", "b")), false, emptyMap()), false, relaxed = true))
+    }
+
 }
