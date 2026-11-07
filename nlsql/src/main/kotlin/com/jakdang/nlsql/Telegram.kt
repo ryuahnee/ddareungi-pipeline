@@ -1,31 +1,75 @@
 package com.jakdang.nlsql
 
+import com.fasterxml.jackson.databind.JsonNode
+
 fun allowedChat(chatId: String, configuredChatId: String): Boolean = chatId == configuredChatId
 
-fun telegramBot(token: String, chatId: String, ask: (String) -> String) {
-    val endpoint = "https://api.telegram.org/bot$token/"
+fun telegramBot(
+    token: String,
+    chatId: String,
+    request: (String, Map<String, Any>, Long) -> JsonNode = { method, body, timeout ->
+        postJson("https://api.telegram.org/bot$token/$method", body, timeout, requireHttpSuccess = false)
+    },
+    pause: (Long) -> Unit = { Thread.sleep(it) },
+    ask: (String) -> String
+) {
+    fun send(answer: String) {
+        val sent = request("sendMessage", mapOf("chat_id" to chatId, "text" to answer, "parse_mode" to "HTML"), 30)
+        if (!sent.path("ok").asBoolean()) {
+            val plain = answer.replace(Regex("<[^>]*>"), "")
+                .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+            check(request("sendMessage", mapOf("chat_id" to chatId, "text" to plain), 30).path("ok").asBoolean())
+        }
+    }
     var offset = 0L
+    var backoff = 1000L
     println("텔레그램 polling 시작")
     while (!Thread.currentThread().isInterrupted) {
-        val updates = postJson(endpoint + "getUpdates", mapOf("timeout" to 30, "offset" to offset,
-            "allowed_updates" to listOf("message")), 40)
-        check(updates.path("ok").asBoolean())
-        for (update in updates.path("result")) {
-            offset = update.path("update_id").asLong() + 1
-            val message = update.path("message")
-            if (!message.isObject) continue
-            if (!allowedChat(message.path("chat").path("id").asText(), chatId)) {
-                println("허용되지 않은 채팅: 메시지 무시")
-                continue
+        val updates = try {
+            request("getUpdates", mapOf("timeout" to 30, "offset" to offset,
+                "allowed_updates" to listOf("message")), 40).also { check(it.path("ok").asBoolean()) }
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return
+        } catch (_: Exception) {
+            println("텔레그램 polling 실패: 대기 후 재시도")
+            try { pause(backoff) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
             }
-            val text = message.path("text").asText()
-            if (text.isBlank()) continue
-            val answer = if (text.substringBefore(' ').substringBefore('@') == "/start") {
-                "따릉이 mart에 대해 질문하세요. 예: 지금 고갈된 대여소 몇 개야?\n조회만 가능하며 최대 20행과 실행 SQL, 데이터 기준 시각을 표시합니다."
-            } else ask(text)
-            val sent = postJson(endpoint + "sendMessage", mapOf("chat_id" to chatId, "text" to answer,
-                "parse_mode" to "HTML"), 30)
-            check(sent.path("ok").asBoolean())
+            backoff = (backoff * 2).coerceAtMost(60000L)
+            continue
+        }
+        backoff = 1000L
+        for (update in updates.path("result")) {
+            offset = maxOf(offset, update.path("update_id").asLong() + 1)
+            try {
+                val message = update.path("message")
+                if (!message.isObject) continue
+                if (!allowedChat(message.path("chat").path("id").asText(), chatId)) {
+                    println("허용되지 않은 채팅: 메시지 무시")
+                    continue
+                }
+                val text = message.path("text").asText()
+                if (text.isBlank()) continue
+                val answer = if (text.substringBefore(' ').substringBefore('@') == "/start") {
+                    "따릉이 mart에 대해 질문하세요. 예: 지금 고갈된 대여소 몇 개야?\n조회만 가능하며 최대 20행과 실행 SQL, 데이터 기준 시각을 표시합니다."
+                } else ask(text)
+                send(answer)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            } catch (_: Exception) {
+                println("텔레그램 update 처리 실패")
+                try {
+                    send("질문 처리 중 오류가 발생했습니다. 다시 질문해 주세요.")
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                } catch (_: Exception) {
+                    println("텔레그램 오류 답장 실패: 다음 update 진행")
+                }
+            }
         }
     }
 }

@@ -13,14 +13,14 @@ import java.time.ZoneId
 val json = jacksonObjectMapper()
 val http: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
 
-fun postJson(url: String, body: Any, timeout: Long, bearer: String? = null): JsonNode {
+fun postJson(url: String, body: Any, timeout: Long, bearer: String? = null, requireHttpSuccess: Boolean = true): JsonNode {
     val builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(timeout))
         .header("Content-Type", "application/json")
         .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
     if (bearer != null) builder.header("Authorization", "Bearer $bearer")
     val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     // Never propagate remote bodies, URLs or exception messages to logs/replies.
-    check(response.statusCode() in 200..299) { "외부 API 호출 실패" }
+    check(!requireHttpSuccess || response.statusCode() in 200..299) { "외부 API 호출 실패" }
     return json.readTree(response.body())
 }
 

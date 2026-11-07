@@ -59,6 +59,10 @@ class SqlValidatorTest {
         assertNull(validateSql("SELECT count(*) FILTER (WHERE is_transition) FROM mart_depletion_transition").reason)
     }
 
+    @Test fun `now와 to_timestamp를 허용한다`() {
+        assertNull(validateSql("SELECT now(), to_timestamp(0) FROM public.mart_station_snapshot LIMIT 1").reason)
+    }
+
     @Test fun `사전 예시 SQL을 허용한다`() {
         val examples = checkNotNull(javaClass.getResource("/glossary.md")).readText()
             .lineSequence().filter { it.startsWith("SELECT ") || it.startsWith("WITH ") }.toList()

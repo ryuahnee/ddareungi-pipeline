@@ -15,7 +15,7 @@ import net.sf.jsqlparser.parser.StringProvider
 import java.util.concurrent.Executors
 
 private val safeFunctions = setOf("count", "sum", "avg", "min", "max", "round", "coalesce", "nullif",
-    "abs", "ceil", "ceiling", "floor", "date_trunc", "date_part", "to_char", "to_date",
+    "abs", "ceil", "ceiling", "floor", "date_trunc", "date_part", "to_char", "to_date", "now", "to_timestamp",
     "convert_to", "lower", "upper", "length", "substring", "concat", "greatest", "least")
 
 // A non-null reason means the SQL must never reach JDBC.
