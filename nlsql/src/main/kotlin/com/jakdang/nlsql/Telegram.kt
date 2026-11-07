@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode
 import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -80,7 +82,8 @@ fun telegramBot(
     }
 }
 
-fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean): String {
+fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean,
+                 today: LocalDate = LocalDate.now(ZoneId.of("Asia/Seoul"))): String {
     fun escape(s: String) = if (html) s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") else s
     fun limited(s: String, budget: Int): String {
         if (escape(s).length <= budget) return escape(s)
@@ -111,37 +114,54 @@ fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean): S
     val title = limited(oneLine(generated.title.ifBlank { "조회 결과" }), 160)
     val unit = limited(oneLine(generated.unit), 40)
     val times = result.basis.values.mapNotNull { runCatching { LocalDateTime.parse(it.replace(' ', 'T')) }.getOrNull() }
+    val oldest = times.minOrNull()
     val basis = if (result.basis.isEmpty()) null else if (times.size != result.basis.size) "관측 시각 없음" else
-        times.minOrNull()?.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))?.plus(" KST 기준")
-    val body = when {
-        result.rows.isEmpty() -> bold(title) + "\n조회 결과가 없습니다 (관측 없음 ≠ 0건)" + (basis?.let { "\n$it" } ?: "")
-        result.rows.size == 1 && result.columns.size == 1 -> {
-            val value = limited(cell(0, result.rows.single().single()), 180)
-            bold("🚲 $title: $value$unit") + "\n" + limited(oneLine(generated.explanation), 300) + (basis?.let { " · $it" } ?: "")
-        }
-        else -> {
-            val last = result.columns.lastIndex
-            val textColumn = (0 until last).firstOrNull { it !in result.numericColumns }
-            val rows = result.rows.take(10)
-            val content = if (result.columns.size in 2..3 && last in result.numericColumns && textColumn != null) {
-                limited(rows.mapIndexed { i, row -> "${i + 1}. ${cell(textColumn, row[textColumn])}  ${cell(last, row[last])}${oneLine(generated.unit)}" }.joinToString("\n"), 1700)
-            } else {
-                val headers = if (generated.labels.size == result.columns.size) generated.labels else result.columns
-                val tableRows = listOf(headers.map { shortText(oneLine(it)) }) + rows.map { row -> row.mapIndexed { i, value -> cell(i, value) } }
-                val widths = result.columns.indices.map { col -> tableRows.maxOf { width(it[col]) } }
-                val table = tableRows.joinToString("\n") { row -> row.mapIndexed { i, value -> value + " ".repeat((widths[i] - width(value)).coerceAtLeast(0)) }.joinToString(" | ") }
-                val text = limited(table, 1700)
-                if (html) "<pre>$text</pre>" else text
-            }
-            bold("📊 $title") + (basis?.let { "\n$it" } ?: "") + "\n\n$content"
+        oldest?.format(DateTimeFormatter.ofPattern(if (oldest.toLocalDate() == today) "HH:mm" else "MM-dd HH:mm"))
+    val labels = if (generated.labels.size == result.columns.size) generated.labels else result.columns
+    val counts = result.rows.size == 1 && result.columns.size == 2 && result.numericColumns.containsAll(setOf(0, 1)) &&
+        labels[0].contains("수") && labels[1].startsWith("전체") && !labels[0].contains("평균")
+    val scalar = result.rows.size == 1 && result.columns.size == 1
+    val heading = when {
+        result.rows.isEmpty() -> bold("📊 $title : 결과 없음")
+        counts || scalar -> bold("🚲 $title : ${limited(cell(0, result.rows.single()[0]), 180)}$unit")
+        else -> bold("📊 $title")
+    }
+    val fields = mutableListOf<String>()
+    if (counts) {
+        val target = result.rows.single()[0]?.toBigDecimalOrNull()
+        val total = result.rows.single()[1]?.toBigDecimalOrNull()
+        val ratio = if (target != null && total != null && total.signum() > 0)
+            target.multiply(100.toBigDecimal()).divide(total, 1, RoundingMode.HALF_UP).toPlainString() + "%" else "계산 불가"
+        fields.add("비율 : 전체 ${limited(cell(1, result.rows.single()[1]), 180)}$unit 중 ${limited(ratio, 80)}")
+    }
+    if (result.rows.isNotEmpty()) {
+        if (generated.condition.isNotBlank()) fields.add("조건 : ${limited(oneLine(generated.condition), 280)}")
+        if (generated.period.isNotBlank()) fields.add("기간 : ${limited(oneLine(generated.period), 160)}")
+    }
+    if (basis != null && result.rows.isNotEmpty()) fields.add("기준 : $basis")
+    val notes = mutableListOf<String>()
+    if (result.rows.isEmpty()) notes.add("관측 없음 (0건과 다름)")
+    if (generated.note.isNotBlank()) notes.add(limited(oneLine(generated.note), 280))
+    if (result.truncated) notes.add("100행 초과로 잘림")
+    else if (result.rows.size > 10) notes.add("상위 10행만 표시 · 전체 ${result.rows.size}행")
+    if (notes.isNotEmpty()) fields.add("참고 : 💡 ${notes.joinToString(" · ")}")
+    if (basis != null && result.rows.isEmpty()) fields.add("기준 : $basis")
+    val content = if (result.rows.isEmpty() || counts || scalar) "" else {
+        val last = result.columns.lastIndex
+        val textColumn = (0 until last).lastOrNull { it !in result.numericColumns }
+        val rows = result.rows.take(10)
+        if (result.columns.size in 2..3 && last in result.numericColumns && textColumn != null) {
+            limited(rows.mapIndexed { i, row -> "${i + 1}. ${cell(textColumn, row[textColumn])} : ${cell(last, row[last])}${oneLine(generated.unit)}" }.joinToString("\n"), 1400)
+        } else {
+            val tableRows = listOf(labels.map { shortText(oneLine(it)) }) + rows.map { row -> row.mapIndexed { i, value -> cell(i, value) } }
+            val widths = result.columns.indices.map { col -> tableRows.maxOf { width(it[col]) } }
+            val table = tableRows.joinToString("\n") { row -> row.mapIndexed { i, value -> value + " ".repeat((widths[i] - width(value)).coerceAtLeast(0)) }.joinToString(" | ") }
+            val text = limited(table, 1400)
+            if (html) "<pre>$text</pre>" else text
         }
     }
-    val count = when {
-        result.truncated -> "\n100행 초과로 잘림"
-        result.rows.size > 10 -> "\n상위 10행만 표시 · 전체 ${result.rows.size}행"
-        else -> ""
-    }
-    val sql = limited(generated.sql, 1400)
-    val sqlBlock = if (html) "<blockquote expandable>SQL\n<code>$sql</code></blockquote>" else "SQL\n$sql"
-    return "$body$count\n\n$sqlBlock"
+    val body = (listOf(heading) + fields).joinToString("\n") + if (content.isEmpty()) "" else "\n\n$content"
+    val sql = limited(generated.sql, 1200)
+    val sqlBlock = if (html) "<blockquote expandable>SQL 보기\n<code>$sql</code></blockquote>" else "SQL 보기\n$sql"
+    return "$body\n\n$sqlBlock"
 }

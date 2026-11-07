@@ -21,7 +21,7 @@
 # 예시 질문 → SQL
 
 지금 고갈된 대여소 몇 개야?
-SELECT count(*) AS depleted_stations FROM public.mart_station_snapshot WHERE shared < 10;
+SELECT count(*) FILTER (WHERE shared < 10) AS target_count, count(*) AS total_count FROM public.mart_station_snapshot;
 
 고갈 경보가 가장 많이 발생한 대여소 상위 5개
 SELECT station_id, max(station_name) AS station_name, count(DISTINCT convert_to(run_id, 'UTF8')) AS alert_runs FROM public.mart_depletion_alert GROUP BY station_id ORDER BY alert_runs DESC, station_id LIMIT 5;
