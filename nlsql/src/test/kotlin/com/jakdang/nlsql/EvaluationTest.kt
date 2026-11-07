@@ -38,4 +38,11 @@ class EvaluationTest {
         assertFalse(redact("test-secret example.invalid").contains("test-secret"))
         assertFalse(redact("test-secret example.invalid").contains("example.invalid"))
     }
+    @Test fun `25개 정답 SQL은 모두 검증기를 통과한다`() {
+        val cases = checkNotNull(javaClass.getResource("/eval/golden.jsonl")).readText().lineSequence()
+            .filter { it.isNotBlank() }.map { json.readValue(it, GoldenCase::class.java) }.toList()
+        assertEquals(25, cases.size)
+        cases.forEach { assertNull(validateSql(it.expected_sql).reason, it.id) }
+    }
+
 }

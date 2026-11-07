@@ -32,6 +32,9 @@ fun main(args: Array<String>) {
                 telegramBot(env("TELEGRAM_BOT_TOKEN"), env("TELEGRAM_CHAT_ID")) { ask(it, "telegram", true) }
             }
         }
+    } catch (e: EvalPreparationFailure) {
+        System.err.println("평가 준비 실패: ${e.message}")
+        exitProcess(1)
     } catch (_: Exception) {
         System.err.println("nlsql 실행 실패: 환경변수·DB 연결·외부 API 상태를 확인해 주세요.")
         exitProcess(1)

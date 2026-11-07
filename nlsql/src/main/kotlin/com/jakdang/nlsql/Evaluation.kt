@@ -21,6 +21,8 @@ fun resultsMatch(expected: QueryResult, actual: QueryResult, ordered: Boolean): 
     return if (ordered) left == right else left.toSet() == right.toSet()
 }
 
+class EvalPreparationFailure(message: String) : RuntimeException(message)
+
 data class GoldenCase(val id: String, val question: String, val expected_sql: String, val category: String)
 private data class EvalItem(val case: GoldenCase, val attempt: QueryAttempt, val passed: Boolean, val reason: String,
                             val expectedHash: String?, val actualHash: String?)
@@ -37,9 +39,11 @@ fun evaluate(model: String, runner: QueryRunner, db: Database, schema: Map<Strin
     require(cases.map { it.id }.distinct().size == cases.size)
     val checks = cases.associate { case ->
         val check = validateSql(case.expected_sql)
-        require(check.reason == null && check.tables.all { it in schema }) { "정답 SQL 검증 실패: ${case.id}" }
-        val reference = db.execute(case.expected_sql, check.tables, schema)
-        require(reference.rows.isNotEmpty() && !reference.truncated) { "정답 SQL은 1~100행이어야 합니다: ${case.id}" }
+        if (check.reason != null || check.tables.any { it !in schema }) throw EvalPreparationFailure("정답 SQL 검증 거부: ${case.id}")
+        val reference = try { db.execute(case.expected_sql, check.tables, schema) } catch (_: Exception) {
+            throw EvalPreparationFailure("정답 SQL 실행 실패: ${case.id}")
+        }
+        if (reference.rows.isEmpty() || reference.truncated) throw EvalPreparationFailure("정답 SQL 결과는 1~100행이어야 합니다: ${case.id}")
         case.id to check
     }
     println("정답 SQL ${cases.size}개: 검증기·nl_reader 실행·비어 있지 않은 결과 확인")
