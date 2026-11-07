@@ -1,6 +1,12 @@
 package com.jakdang.nlsql
 
 import com.fasterxml.jackson.databind.JsonNode
+import java.math.RoundingMode
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 fun allowedChat(chatId: String, configuredChatId: String): Boolean = chatId == configuredChatId
 
@@ -53,7 +59,7 @@ fun telegramBot(
                 val text = message.path("text").asText()
                 if (text.isBlank()) continue
                 val answer = if (text.substringBefore(' ').substringBefore('@') == "/start") {
-                    "따릉이 mart에 대해 질문하세요. 예: 지금 고갈된 대여소 몇 개야?\n조회만 가능하며 최대 20행과 실행 SQL, 데이터 기준 시각을 표시합니다."
+                    "따릉이 mart에 대해 질문하세요. 예: 지금 고갈된 대여소 몇 개야?\n조회만 가능하며 최대 10행과 실행 SQL, 데이터 기준 시각을 표시합니다."
                 } else ask(text)
                 send(answer)
             } catch (_: InterruptedException) {
@@ -79,25 +85,63 @@ fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean): S
     fun limited(s: String, budget: Int): String {
         if (escape(s).length <= budget) return escape(s)
         val out = StringBuilder()
-        for (c in s) {
-            val part = escape(c.toString())
-            if (out.length + part.length > budget - 12) break
+        val points = s.codePoints().iterator()
+        while (points.hasNext()) {
+            val part = escape(String(Character.toChars(points.nextInt())))
+            if (out.length + part.length > budget - 8) break
             out.append(part)
         }
         return out.append("… (잘림)").toString()
     }
-    fun code(s: String, budget: Int) = if (html) "<pre>${limited(s, budget)}</pre>" else "```\n${limited(s, budget)}\n```"
-    val rows = (listOf(result.columns) + result.rows.take(20)).map { row ->
-        row.map { (it ?: "NULL").replace(Regex("[\\r\\n\\t]"), " ").take(60) }
+    fun oneLine(s: String) = s.replace(Regex("[\\r\\n\\t]"), " ")
+    fun shortText(text: String) = if (text.codePointCount(0, text.length) <= 60) text else
+        text.substring(0, text.offsetByCodePoints(0, 60)) + "…"
+    fun width(text: String) = text.codePoints().map {
+        if (it in 0x1100..0x115f || it in 0x2e80..0xa4cf || it in 0xac00..0xd7a3 ||
+            it in 0xf900..0xfaff || it in 0x1f300..0x1faff) 2 else 1
+    }.sum()
+    val number = DecimalFormat("#,##0.##", DecimalFormatSymbols(Locale.US)).apply { roundingMode = RoundingMode.HALF_UP }
+    fun cell(column: Int, value: String?): String {
+        if (value == null) return "NULL"
+        val numeric = if (column in result.numericColumns) value.toBigDecimalOrNull() else null
+        val text = oneLine(if (numeric == null) value else number.format(numeric))
+        return shortText(text)
     }
-    val widths = result.columns.indices.map { col -> rows.maxOf { it[col].length }.coerceAtMost(60) }
-    val table = rows.joinToString("\n") { row -> row.mapIndexed { i, cell -> cell.padEnd(widths[i]) }.joinToString(" | ") }
-    val basis = if (result.basis.isEmpty()) "참조 테이블에 collected_at 없음" else
-        result.basis.entries.joinToString("\n") { "${it.key}: ${it.value} KST" }
-    val count = if (result.truncated) "100행 초과 (100행에서 잘림)" else "${result.rows.size}행"
-    return "${limited(generated.explanation.lineSequence().first(), 250)}\n" +
-        "결과 (최대 20행):\n${code(table, 1200)}\n" +
-        "실행 SQL:\n${code(generated.sql, 1500)}\n" +
-        "데이터 기준 시각 (참조 테이블 전체 최댓값):\n${limited(basis, 650)}\n" +
-        "행 수: $count${if (result.rows.size > 20) " / 화면 20행에서 잘림" else ""}"
+    fun bold(s: String) = if (html) "<b>$s</b>" else s
+    val title = limited(oneLine(generated.title.ifBlank { "조회 결과" }), 160)
+    val unit = limited(oneLine(generated.unit), 40)
+    val times = result.basis.values.mapNotNull { runCatching { LocalDateTime.parse(it.replace(' ', 'T')) }.getOrNull() }
+    val basis = if (result.basis.isEmpty()) null else if (times.size != result.basis.size) "관측 시각 없음" else
+        times.minOrNull()?.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))?.plus(" KST 기준")
+    val body = when {
+        result.rows.isEmpty() -> bold(title) + "\n조회 결과가 없습니다 (관측 없음 ≠ 0건)" + (basis?.let { "\n$it" } ?: "")
+        result.rows.size == 1 && result.columns.size == 1 -> {
+            val value = limited(cell(0, result.rows.single().single()), 180)
+            bold("🚲 $title: $value$unit") + "\n" + limited(oneLine(generated.explanation), 300) + (basis?.let { " · $it" } ?: "")
+        }
+        else -> {
+            val last = result.columns.lastIndex
+            val textColumn = (0 until last).firstOrNull { it !in result.numericColumns }
+            val rows = result.rows.take(10)
+            val content = if (result.columns.size in 2..3 && last in result.numericColumns && textColumn != null) {
+                limited(rows.mapIndexed { i, row -> "${i + 1}. ${cell(textColumn, row[textColumn])}  ${cell(last, row[last])}${oneLine(generated.unit)}" }.joinToString("\n"), 1700)
+            } else {
+                val headers = if (generated.labels.size == result.columns.size) generated.labels else result.columns
+                val tableRows = listOf(headers.map { shortText(oneLine(it)) }) + rows.map { row -> row.mapIndexed { i, value -> cell(i, value) } }
+                val widths = result.columns.indices.map { col -> tableRows.maxOf { width(it[col]) } }
+                val table = tableRows.joinToString("\n") { row -> row.mapIndexed { i, value -> value + " ".repeat((widths[i] - width(value)).coerceAtLeast(0)) }.joinToString(" | ") }
+                val text = limited(table, 1700)
+                if (html) "<pre>$text</pre>" else text
+            }
+            bold("📊 $title") + (basis?.let { "\n$it" } ?: "") + "\n\n$content"
+        }
+    }
+    val count = when {
+        result.truncated -> "\n100행 초과로 잘림"
+        result.rows.size > 10 -> "\n상위 10행만 표시 · 전체 ${result.rows.size}행"
+        else -> ""
+    }
+    val sql = limited(generated.sql, 1400)
+    val sqlBlock = if (html) "<blockquote expandable>SQL\n<code>$sql</code></blockquote>" else "SQL\n$sql"
+    return "$body$count\n\n$sqlBlock"
 }
