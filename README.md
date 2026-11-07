@@ -228,6 +228,10 @@ GRAFANA_DB_URL=jdbc:postgresql://localhost:5433/grafana \
 GRAFANA_DB_USER=grafana \
 GRAFANA_DB_PASSWORD=grafana \
 ./gradlew :api:run
+
+# nlsql: infra/docker/.env의 OPENAI_*, NL_READER_*, GRAFANA_DB_URL, TELEGRAM_*를 환경변수로 로드한 뒤 실행
+./gradlew :nlsql:run
+./gradlew :nlsql:run --args='--ask "지금 고갈된 대여소 몇 개야?"'
 ```
 
 ---
@@ -242,6 +246,7 @@ ddareungi-pipeline/
 │   ├── db/          MySqlClient / PostgresClient
 │   └── model/       데이터 모델
 ├── api/             Ktor REST API (port 8090)
+├── nlsql/           텔레그램 Text-to-SQL 읽기 전용 봇
 └── infra/
     ├── airflow/dags/  DAG 정의 (6개)
     ├── docker/        docker-compose, Dockerfile
