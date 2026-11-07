@@ -144,6 +144,17 @@ martDepletionTransition
 
 ---
 
+## 개발 방식
+
+AI 에이전트 2개로 작업과 리뷰를 분리해 운영한다.
+
+- 브랜치: `main`(큰 단위) ← `develop`(작은 단위) ← `feature/*`
+- 흐름: 작업 에이전트(Codex)가 feature 브랜치에서 구현 → PR → 리뷰 에이전트(Claude Code)가 체크리스트 기준 리뷰·원천-mart 대조 검증 → `develop` 병합
+- 리뷰 체크리스트: 멱등성, 파티션 프루닝, Freshness / Lineage / Validation, 결측 처리, 문서 반영
+- AI 리뷰 PR은 `ai-review` 라벨로 표시
+
+---
+
 ## 기술 스택
 
 | 역할 | 기술 |
