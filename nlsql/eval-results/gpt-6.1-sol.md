@@ -122,4 +122,3 @@ SELECT round(avg(shared), 2) AS avg_shared, count(shared) AS observed_shared_cou
 ```sql
 SELECT round(avg(depletion_rate)::numeric, 2) AS avg_depletion_rate, count(depletion_rate) AS observed_rows FROM public.mart_subway_rush_depletion WHERE hour_of_day = 7;
 ```
-

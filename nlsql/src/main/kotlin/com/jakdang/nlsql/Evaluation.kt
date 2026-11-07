@@ -122,6 +122,6 @@ fun evaluate(model: String, runner: QueryRunner, db: Database, schema: Map<Strin
     val module = if (Files.isDirectory(Path.of("nlsql/src"))) Path.of("nlsql") else Path.of(".")
     val output = module.resolve("eval-results")
     Files.createDirectories(output)
-    Files.writeString(output.resolve("$model.md"), redact(report))
+    Files.writeString(output.resolve("$model.md"), redact(report).trimEnd() + "\n")
     println("평가 결과 저장: eval-results/$model.md")
 }
