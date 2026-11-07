@@ -19,7 +19,7 @@ private val safeFunctions = setOf("count", "sum", "avg", "min", "max", "round", 
     "convert_to", "lower", "upper", "length", "substring", "concat", "greatest", "least")
 
 // A non-null reason means the SQL must never reach JDBC.
-data class SqlCheck(val tables: Set<String> = emptySet(), val reason: String? = null)
+data class SqlCheck(val tables: Set<String> = emptySet(), val reason: String? = null, val ordered: Boolean = false)
 
 fun validateSql(sql: String): SqlCheck {
     if (sql.isBlank()) return SqlCheck(reason = "조회만 지원하며 변경·삭제 요청은 거부합니다.")
@@ -109,7 +109,8 @@ fun validateSql(sql: String): SqlCheck {
             }
         }
         finder.getTables(statements.single())
-        SqlCheck(tables)
+        val select = statements.single() as Select
+        SqlCheck(tables, ordered = !select.orderByElements.isNullOrEmpty() && (select.limit != null || select.fetch != null))
     } catch (e: IllegalArgumentException) {
         SqlCheck(reason = e.message ?: "허용하지 않는 SQL입니다.")
     } catch (e: IllegalStateException) {

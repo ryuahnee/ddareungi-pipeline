@@ -88,7 +88,7 @@ fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean): S
     }
     fun code(s: String, budget: Int) = if (html) "<pre>${limited(s, budget)}</pre>" else "```\n${limited(s, budget)}\n```"
     val rows = (listOf(result.columns) + result.rows.take(20)).map { row ->
-        row.map { it.replace(Regex("[\\r\\n\\t]"), " ").take(60) }
+        row.map { (it ?: "NULL").replace(Regex("[\\r\\n\\t]"), " ").take(60) }
     }
     val widths = result.columns.indices.map { col -> rows.maxOf { it[col].length }.coerceAtMost(60) }
     val table = rows.joinToString("\n") { row -> row.mapIndexed { i, cell -> cell.padEnd(widths[i]) }.joinToString(" | ") }

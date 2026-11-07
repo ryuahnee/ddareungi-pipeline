@@ -229,10 +229,16 @@ GRAFANA_DB_USER=grafana \
 GRAFANA_DB_PASSWORD=grafana \
 ./gradlew :api:run
 
-# nlsql: infra/docker/.env의 OPENAI_*, NL_READER_*, GRAFANA_DB_URL, TELEGRAM_*를 환경변수로 로드한 뒤 실행
+# nlsql: infra/docker/.env의 OPENAI_*, NL_READER_*, GRAFANA_DB_URL, GRAFANA_DB_USER/PASSWORD, TELEGRAM_*를 환경변수로 로드한 뒤 실행
 ./gradlew :nlsql:run
 ./gradlew :nlsql:run --args='--ask "지금 고갈된 대여소 몇 개야?"'
 ```
+
+### Text-to-SQL 평가·로그
+
+질문별 생성 SQL·검증·실행 지표는 `nl_query_log`에 기록한다. `infra/sql/create_nl_query_log.sql`을 grafana 계정으로 먼저 실행하며, 결과 행과 chat id는 기록하지 않는다.
+
+`./gradlew :nlsql:run --args='--eval'`로 평가하며, `--args='--eval --model <id>'`로 모델을 지정한다. strict(컬럼 수·위치 포함)와 relaxed(서로 다른 컬럼 대응·보조 컬럼 허용)를 함께 비교한다. [최신 모델별 평가 결과](nlsql/eval-results/README.md)를 참고한다.
 
 ---
 
