@@ -4,9 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -82,8 +80,7 @@ fun telegramBot(
     }
 }
 
-fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean,
-                 today: LocalDate = LocalDate.now(ZoneId.of("Asia/Seoul"))): String {
+fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean): String {
     fun escape(s: String) = if (html) s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") else s
     fun limited(s: String, budget: Int): String {
         if (escape(s).length <= budget) return escape(s)
@@ -116,7 +113,7 @@ fun formatAnswer(generated: GeneratedSql, result: QueryResult, html: Boolean,
     val times = result.basis.values.mapNotNull { runCatching { LocalDateTime.parse(it.replace(' ', 'T')) }.getOrNull() }
     val oldest = times.minOrNull()
     val basis = if (result.basis.isEmpty()) null else if (times.size != result.basis.size) "관측 시각 없음" else
-        oldest?.format(DateTimeFormatter.ofPattern(if (oldest.toLocalDate() == today) "HH:mm" else "MM-dd HH:mm"))
+        oldest?.format(DateTimeFormatter.ofPattern("M월 d일 HH:mm 수집분"))
     val labels = if (generated.labels.size == result.columns.size) generated.labels else result.columns
     val counts = result.rows.size == 1 && result.columns.size == 2 && result.numericColumns.containsAll(setOf(0, 1)) &&
         labels[0].contains("수") && labels[1].startsWith("전체") && !labels[0].contains("평균")
