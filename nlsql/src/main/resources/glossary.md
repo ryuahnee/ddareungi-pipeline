@@ -6,7 +6,7 @@
 - 오늘/어제는 Asia/Seoul 기준이다. 날짜 계산은 (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date를 사용한다.
 - 결측은 보간하지 않는다. 관측되지 않은 시간은 0으로 간주하지 않는다. 데이터가 오래됐어도 현재 시각의 관측이라고 표현하지 않는다.
 - 07시대는 KST 07:00 이상 08:00 미만, 09시대는 09:00 이상 10:00 미만이다. 부족 전환은 두 시간대가 모두 관측된 대여소-일 중 07시대 평균 shared >= 10이고 09시대 평균 shared < 10인 경우(is_transition=true)이다.
-- mart_station_snapshot: 현재 대여소 전체 현황. 현재 고갈 수는 이 테이블에서 shared < 10인 행을 센다.
+- mart_station_snapshot: 현재 대여소 전체 현황. 현재 고갈 수는 이 테이블에서 shared < 10인 행을 센다. 대여소를 나열할 때는 station_id와 station_name을 함께 조회하고 station_name을 사람이 읽는 이름으로 쓴다. station_id는 문자열 식별자이므로 이름 대신 단독으로 표시하지 않는다.
 - mart_depletion_alert: run별 고갈 경보 이력. 경보 빈도는 대여소별 COUNT(DISTINCT convert_to(run_id, 'UTF8'))로 비교한다. run_id는 ASCII 실행 식별자이므로 convert_to(run_id, 'UTF8')로 바이트 동일성을 비교해 문자열 정렬 비용을 줄인다.
 - mart_congestion_alert: run별 혼잡 경보 이력.
 - mart_weather_depletion: run별 날씨(강수 유형·기온)별 고갈 대여소 수. precip_type=0은 비/눈 없음, >0은 강수 있음(눈 포함). 비교 시 run별·강수 여부별 depletion_count를 먼저 합산하고 평균을 비교해 관측 횟수 차이를 보정한다. 인과관계를 주장하지 않는다.
@@ -22,6 +22,9 @@
 
 지금 고갈된 대여소 몇 개야?
 SELECT count(*) FILTER (WHERE shared < 10) AS target_count, count(*) AS total_count FROM public.mart_station_snapshot;
+
+현재 고갈된 대여소 목록 보여줘
+SELECT station_id, station_name, shared FROM public.mart_station_snapshot WHERE shared < 10 ORDER BY shared ASC, station_id LIMIT 10;
 
 고갈 경보가 가장 많이 발생한 대여소 상위 5개
 SELECT station_id, max(station_name) AS station_name, count(DISTINCT convert_to(run_id, 'UTF8')) AS alert_runs FROM public.mart_depletion_alert GROUP BY station_id ORDER BY alert_runs DESC, station_id LIMIT 5;

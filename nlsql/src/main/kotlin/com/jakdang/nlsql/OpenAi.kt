@@ -58,6 +58,7 @@ fun generateSql(question: String, schema: Map<String, List<Pair<String, String>>
         판단 조건을 WHERE에 넣어 전체 수도 대상 수로 줄이지 말고 대상 집계에만 적용하라. 날짜 같은 공통 비교 범위만 WHERE로 제한한다.
         단, 시간대 고갈 경보 건수 질문은 WHERE를 해당일 00:00부터 다음날 00:00까지만 제한하고 시간대 조건은 target_count의 FILTER 안에만 둔다. total_count는 그날 전체 경보 기록 수이며 시간대로 제한하지 않는다.
         평균·비율·목록 질문에는 위 전체 수 컬럼을 임의로 추가하지 마라. 목록은 사람이 읽는 이름 컬럼을 포함하고 대표 숫자는 마지막 SELECT 컬럼으로 둔다.
+        station_id·rntls_id·out_stn_num 같은 식별자(ID)만으로 목록을 만들지 마라. 대여소·역을 나열할 때는 반드시 이름 컬럼(station_name, stn_kr_nm, addr1 등)을 함께 조회해 대표 이름으로 쓴다.
         SQL 별칭은 target_count, total_count 같은 공백 없는 영문 snake_case를 사용한다. 한국어 표기는 labels에만 둔다.
         고갈 경보 빈도 목록의 condition은 "거치율 10% 미만 기록 횟수 (10분 단위)"로 쓴다. 실제 대여 횟수로 표현하지 마라. 고갈 경보 순위는 추가로 확인된 주의사항이 없으면 note를 반드시 빈 문자열로 두고 횟수 집계 방식을 덧붙이지 마라.
     """.trimIndent()

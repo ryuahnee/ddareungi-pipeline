@@ -66,7 +66,7 @@ class SqlValidatorTest {
     @Test fun `사전 예시 SQL을 허용한다`() {
         val examples = checkNotNull(javaClass.getResource("/glossary.md")).readText()
             .lineSequence().filter { it.startsWith("SELECT ") || it.startsWith("WITH ") }.toList()
-        assertEquals(5, examples.size)
+        assertEquals(6, examples.size)
         examples.forEach { assertNull(validateSql(it).reason, it) }
     }
 }
